@@ -1,61 +1,60 @@
 """
 Database configuration and session management
 """
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-from typing import AsyncGenerator
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from typing import Generator
 
 from app.core.config import settings
 
-# Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
+# Convert async URL to sync URL
+database_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+
+# Create sync engine
+engine = create_engine(
+    database_url,
     echo=settings.DEBUG,
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_pre_ping=True,
 )
 
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
+# Create session factory
+SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
+    bind=engine
 )
 
 # Create declarative base for models
 Base = declarative_base()
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+def get_db() -> Generator[Session, None, None]:
     """
     Dependency function to get database session
 
     Usage:
         @app.get("/")
-        async def read_data(db: AsyncSession = Depends(get_db)):
+        def read_data(db: Session = Depends(get_db)):
             # Use db session here
     """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
-async def init_db():
+def init_db():
     """Initialize database tables (for development only)"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Base.metadata.create_all(bind=engine)
 
 
-async def drop_db():
+def drop_db():
     """Drop all database tables (for testing only)"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    Base.metadata.drop_all(bind=engine)

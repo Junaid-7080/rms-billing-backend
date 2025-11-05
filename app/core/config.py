@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     # API
     API_V1_STR: str = "/api/v1"
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173"]
+    
+    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    def assemble_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",")]
+        return v
 
     # Database
     DATABASE_URL: str
@@ -34,6 +40,12 @@ class Settings(BaseSettings):
     # Trial Settings
     TRIAL_DAYS: int = 14
     TRIAL_REMINDER_DAYS: List[int] = [7, 12, 13]
+    
+    @validator("TRIAL_REMINDER_DAYS", pre=True)
+    def assemble_reminder_days(cls, v):
+        if isinstance(v, str):
+            return [int(i.strip()) for i in v.split(",")]
+        return v
 
     # Subscription Limits
     FREE_TIER_INVOICE_LIMIT: int = 10
