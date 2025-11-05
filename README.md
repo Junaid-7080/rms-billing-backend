@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RMS Billing Software - Backend API
 
 ## Overview
@@ -652,3 +653,7 @@ Once the backend is complete, we'll integrate it with your existing React fronte
 
 **Built with ❤️ for Indian businesses**
 "# invoice-app-backend" 
+=======
+# invoice_app_backend
+Fastapi backend 
+>>>>>>> 4f617af77c9de48c990fd2406080dac7ff19fd6f
