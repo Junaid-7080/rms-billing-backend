@@ -1,9 +1,9 @@
 fastapi
 uvicorn
 gunicorn
-psycopg2-binary   
-python-dotenv     
-SQLAlchemy       
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+SQLAlchemy==2.0.23       
 aiofiles==23.2.1
 aiohappyeyeballs==2.6.1
 aiohttp==3.12.15
