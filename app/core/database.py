@@ -10,8 +10,6 @@ from app.core.config import settings
 # Convert async URL to sync URL
 database_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
-
-
 # Create sync engine
 engine = create_engine(
     database_url,
@@ -44,9 +42,11 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except Exception:
+        # ❌ Remove automatic commit - let routes handle it
+        # db.commit()
+    except Exception as e:
         db.rollback()
+        print(f"❌ Database Error in get_db: {e}")
         raise
     finally:
         db.close()
@@ -54,9 +54,19 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db():
     """Initialize database tables (for development only)"""
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
+        raise
 
 
 def drop_db():
     """Drop all database tables (for testing only)"""
-    Base.metadata.drop_all(bind=engine)
+    try:
+        Base.metadata.drop_all(bind=engine)
+        print("✅ Database tables dropped successfully")
+    except Exception as e:
+        print(f"❌ Error dropping tables: {e}")
+        raise
