@@ -14,7 +14,9 @@ from app.schemas.auth import (
     RefreshTokenRequest, RefreshTokenResponse,
     LogoutResponse
 )
+from app.schemas.auth import VerifyEmailRequest
 from app.services.email import send_verification_email
+
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
