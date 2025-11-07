@@ -10,6 +10,8 @@ from app.core.config import settings
 # Convert async URL to sync URL
 database_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
+
+
 # Create sync engine
 engine = create_engine(
     database_url,
