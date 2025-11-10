@@ -1,50 +1,65 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.endpoints.router import api_router
+from app.api.v1.router import api_router
 from app.core.config import settings
+from app.middleware.tenant import TenantMiddleware
+from fastapi.middleware.cors import CORSMiddleware
+import logging
 
+# -------------------------------------------------
+# 🧠 Logging Configuration
+# -------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+# -------------------------------------------------
+# 🚀 Create the FastAPI app
+# -------------------------------------------------
 app = FastAPI(
-    title="RMS Billing Software API",
-    description="Complete billing and invoice management system",
+    title="Invoice App Backend",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    description="Multi-tenant billing and invoice management API"
 )
 
-# CORS middleware
+# -------------------------------------------------
+# 🧩 Middleware
+# -------------------------------------------------
+# ✅ Tenant Middleware (make sure call_next is used inside it)
+app.add_middleware(TenantMiddleware)
+
+# ✅ CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],  # ⚠️ Change to frontend domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API router
-app.include_router(api_router)
+# -------------------------------------------------
+# 🔗 Include API Routes
+# -------------------------------------------------
+app.include_router(api_router, prefix="/api/v1")
 
+# -------------------------------------------------
+# 🏠 Root Endpoint
+# -------------------------------------------------
 @app.get("/")
 def root():
-    return {
-        "message": "RMS Billing Software API",
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/docs",
-        "endpoints": 42
-    }
+    logger.info("Root endpoint hit ✅")
+    return {"message": "Invoice App Backend is running 🚀"}
 
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "database": "connected"
-    }
+# -------------------------------------------------
+# ⚡ Application Lifecycle Events
+# -------------------------------------------------
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Application startup...")
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("🛑 Application shutdown...")
+
+
