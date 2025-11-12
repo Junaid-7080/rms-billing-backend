@@ -1,48 +1,34 @@
-# Core packages (already installed, keep existing versions)
-aiofiles==23.2.1
-aiohappyeyeballs==2.6.1
-aiohttp==3.12.15
-aiohttp-retry==2.9.1
-aioredis==2.0.1
-aiosignal==1.4.0
-alembic==1.12.1
-amqp==5.3.1
-annotated-types==0.7.0
-anyio==3.7.1
-asgiref==3.8.1
-async-timeout==5.0.1
-attrs==25.3.0
-
-# FastAPI & Uvicorn (using your existing versions)
+# Core FastAPI & Uvicorn
 fastapi==0.120.1
-uvicorn==0.24.0
+uvicorn[standard]==0.24.0
 httptools==0.6.4
 python-multipart==0.0.6
 starlette==0.49.0
 watchfiles==1.1.0
 websockets==15.0.1
 
-# Database (using your existing versions)
+# Database
 sqlalchemy==2.0.43
 alembic==1.12.1
 psycopg2-binary==2.9.9
 SQLAlchemy-Utils==0.41.2
 sqlmodel==0.0.14
 
-# Authentication & Security (using your existing versions)
-python-jose==3.3.0
-passlib==1.7.4
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
 cryptography==45.0.6
 PyJWT==2.10.1
-ecdsa==0.19.1
 
-# Pydantic (using your existing versions)
+# Pydantic
 pydantic==2.12.3
 pydantic-settings==2.10.1
 pydantic_core==2.41.4
 
-# Validation
+# Email
+fastapi-mail==1.4.1
+aiosmtplib==2.0.2
 email-validator==2.3.0
 dnspython==2.8.0
 
@@ -50,14 +36,8 @@ dnspython==2.8.0
 python-dotenv==1.0.0
 python-decouple==3.8
 
-# Date & Time
-python-dateutil==2.8.2
-
 # HTTP Clients
 httpx==0.28.1
-httpcore==1.0.9
-h11==0.16.0
-h2==4.3.0
 requests==2.31.0
 certifi==2025.8.3
 urllib3==2.5.0
@@ -65,77 +45,25 @@ urllib3==2.5.0
 # Celery & Redis
 celery==5.3.4
 redis==5.0.1
-kombu==5.5.4
-vine==5.1.0
-billiard==4.2.1
-amqp==5.3.1
+aioredis==2.0.1
 
-# Django (if needed)
-Django==5.0.6
-djangorestframework==3.15.2
-django-bootstrap3==24.3
+# File Handling
+aiofiles==23.2.1
+Pillow==10.1.0
 
-# Firebase & Google Cloud
-firebase_admin==7.1.0
-google-api-core==2.28.0
-google-auth==2.41.1
-google-cloud-core==2.4.3
-google-cloud-firestore==2.21.0
-google-cloud-storage==3.4.1
-google-crc32c==1.7.1
-google-resumable-media==2.7.2
-
-# MongoDB
-motor==3.3.2
-pymongo==4.6.0
-
-# AWS
-boto3==1.40.60
-botocore==1.40.60
-s3transfer==0.14.0
-
-# Payment Gateways
-stripe==7.8.0
-twilio==8.10.0
+# Templates
+Jinja2==3.1.2
 
 # Utilities
-Pillow==10.1.0
-qrcode==8.2
-openpyxl==3.1.5
-geopy==2.4.1
-geographiclib==2.1
-
-# Templates & Markup
-Jinja2==3.1.2
-MarkupSafe==3.0.2
-Mako==1.3.10
-
-# CLI & Tools
-click==8.2.1
-colorama==0.4.6
-Pygments==2.17.2
+python-dateutil==2.8.2
 PyYAML==6.0.2
-
-# Development & Testing
-pytest==8.4.2
-pytest-asyncio==1.2.0
-ipython==8.22.1
-debugpy==1.8.1
 
 # Server
 gunicorn==23.0.0
-setproctitle==1.3.7
 
-# Build & Packaging
-build==1.3.0
-setuptools
-wheel
-pip
-
-# Other dependencies
-certifi==2025.8.3
-charset-normalizer==3.4.3
+# Common dependencies (auto-installed but listed for clarity)
+anyio==3.7.1
+click==8.2.1
+typing_extensions==4.14.1
 idna==3.10
 sniffio==1.3.1
-typing_extensions==4.14.1
-six==1.17.0
