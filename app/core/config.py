@@ -30,12 +30,12 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 0
 
-    # Email (SMTP)
-    MAIL_USERNAME: str
-    MAIL_PASSWORD: str
-    MAIL_FROM: str
+    # Email (SMTP) - Optional for development
+    MAIL_USERNAME: Optional[str] = None
+    MAIL_PASSWORD: Optional[str] = None
+    MAIL_FROM: Optional[str] = None
     MAIL_PORT: int = 587
-    MAIL_SERVER: str
+    MAIL_SERVER: str = "smtp.gmail.com"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
@@ -70,5 +70,5 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-# Create settings instance - THIS IS THE MISSING LINE!
+# Create settings instance
 settings = Settings()
