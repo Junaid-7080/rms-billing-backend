@@ -1,11 +1,7 @@
 # Core FastAPI & Uvicorn
 fastapi==0.120.1
 uvicorn[standard]==0.24.0
-httptools==0.6.4
 python-multipart==0.0.6
-starlette==0.49.0
-watchfiles==1.1.0
-websockets==15.0.1
 
 # Database
 sqlalchemy==2.0.43
@@ -45,7 +41,6 @@ urllib3==2.5.0
 # Celery & Redis
 celery==5.3.4
 redis==5.0.1
-aioredis==2.0.1
 
 # File Handling
 aiofiles==23.2.1
@@ -61,7 +56,7 @@ PyYAML==6.0.2
 # Server
 gunicorn==23.0.0
 
-# Common dependencies (auto-installed but listed for clarity)
+# Core dependencies (if needed explicitly)
 anyio==3.7.1
 click==8.2.1
 typing_extensions==4.14.1
