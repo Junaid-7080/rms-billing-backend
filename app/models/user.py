@@ -124,3 +124,5 @@ class EmailVerification(Base, TimestampMixin):
 
     def __repr__(self):
         return f"<EmailVerification {self.user_id} - used:{self.is_used}>"
+
+
