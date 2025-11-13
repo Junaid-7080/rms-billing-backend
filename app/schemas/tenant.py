@@ -6,8 +6,8 @@ class TenantResponse(BaseModel):
     name: str
     slug: str
     email: Optional[str]
-    phone: Optional[str]
-    address: Optional[str]
+   
+  
     subscriptionStatus: str
     trialStartDate: Optional[str]
     trialEndDate: Optional[str]

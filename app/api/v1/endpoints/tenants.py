@@ -42,8 +42,8 @@ def get_current_tenant(
         "name": tenant.name,
         "slug": tenant.slug,
         "email": tenant.email,
-        "phone": tenant.phone,
-        "address": tenant.address,
+        
+    
         "subscriptionStatus": tenant.subscription_status,
         "trialStartDate": tenant.trial_start_date.isoformat() if tenant.trial_start_date else None,
         "trialEndDate": tenant.trial_end_date.isoformat() if tenant.trial_end_date else None,
