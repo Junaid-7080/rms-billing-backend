@@ -77,6 +77,9 @@ async def register(
         )
         db.add(tenant)
         
+        # Check if this is the first user for this tenant
+        is_first_user = not db.query(User).filter(User.tenant_id == tenant_id).first()
+        
         # Create user
         user_id = uuid.uuid4()
         user = User(
@@ -86,7 +89,7 @@ async def register(
             password_hash=hash_password(request.password),
             first_name=request.firstName,
             last_name=request.lastName,
-            role="admin",
+            role="admin" if is_first_user else "user",
             email_verified=False,
             is_active=True,
         )
@@ -154,63 +157,6 @@ async def register(
             detail="Database integrity error. Please try again."
         )
 
-@router.post("/verify-email", status_code=status.HTTP_200_OK)
-async def verify_email(
-    request: VerifyEmailRequest,
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Verify user's email address using verification token
-    """
-    # Find verification record
-    verification = db.query(EmailVerification).filter(
-        EmailVerification.token == request.token,
-        EmailVerification.is_used == False,
-        EmailVerification.expires_at > datetime.utcnow()
-    ).first()
-    
-    if not verification:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification token"
-        )
-    
-    # Get user
-    user = db.query(User).filter(User.id == verification.user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    if user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already verified"
-        )
-    
-    # Update user
-    user.email_verified = True
-    user.email_verified_at = datetime.utcnow()
-    
-    # Mark token as used
-    verification.is_used = True
-    verification.used_at = datetime.utcnow()
-    
-    db.commit()
-    
-    return {
-        "message": "Email verified successfully. You can now log in.",
-        "user": {
-            "id": str(user.id),
-            "email": user.email,
-            "emailVerified": user.email_verified,
-        }
-    }
-
-
-
-
 @router.post("/login", response_model=LoginResponse)
 async def login(
     request_data: LoginRequest,
@@ -237,13 +183,6 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
-        )
-    
-    # Check if email is verified
-    if not user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in"
         )
     
     # Get tenant
