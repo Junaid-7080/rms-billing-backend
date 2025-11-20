@@ -86,3 +86,9 @@ class RefreshTokenRequest(BaseModel):
 class TokenResponse(BaseModel):
     accessToken: str
     expiresIn: int
+
+class ChangeRoleResponse(BaseModel):
+    message: str
+    userId: str
+    oldRole: str
+    newRole: str

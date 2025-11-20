@@ -1,109 +1,33 @@
-"""
-FastAPI Dependencies
-Reusable dependency functions for authentication, authorization, etc.
-Dashboard APIs-il use cheyyan vendi dependencies
-"""
+from datetime import date
 from typing import Optional
-from fastapi import Depends, HTTPException, status, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
 
 from app.core.database import get_db
-from app.core.config import settings
+from app.core.security import get_current_user
 from app.models.user import User
 from app.models.tenant import Tenant
 
 
-# Security scheme for Swagger docs
-security = HTTPBearer()
-
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
-    """
-    JWT token-il ninnu current user fetch cheyyunnu
-    
-    Dashboard APIs ellam-um authentication venam
-    Login cheyyathe dashboard access cheyyan pattilla
-    
-    Args:
-        credentials: Bearer token from Authorization header
-        db: Database session
-    
-    Returns:
-        User: Current authenticated user
-    
-    Raises:
-        HTTPException: If token invalid or user not found
-    """
-    # Token decode cheyyunnu
-    token = credentials.credentials
-    
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        # JWT decode
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
-        )
-        
-        # User ID extract cheyyunnu
-        user_id: int = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-        
-    except JWTError:
-        raise credentials_exception
-    
-    # Database-il ninnu user fetch
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise credentials_exception
-    
-    # User active aano check
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
-        )
-    
-    return user
-
-
+# -------------------------
+# TENANT DEPENDENCIES
+# -------------------------
 def get_current_tenant(
     current_user: User = Depends(get_current_user)
 ) -> int:
     """
-    Current user-nte tenant_id return cheyyunnu
-    
-    Multi-tenant architecture aanu - prati user oru tenant-il belong cheyyum
-    Dashboard data tenant_id use cheythu filter cheyyum
-    
-    Args:
-        current_user: Authenticated user
-    
-    Returns:
-        int: Tenant ID
+    Get current user's tenant ID
     
     Raises:
-        HTTPException: If user has no tenant
+        HTTPException: If user is not associated with any tenant
     """
-    if not current_user.tenant_id:
+    tenant_id = getattr(current_user, "tenant_id", None)
+    if not tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not associated with any tenant"
         )
-    
-    return current_user.tenant_id
+    return tenant_id
 
 
 def get_current_active_tenant(
@@ -111,24 +35,12 @@ def get_current_active_tenant(
     db: Session = Depends(get_db)
 ) -> Tenant:
     """
-    Current tenant object fetch cheyyunnu
-    Tenant active aano, subscription valid aano check cheyyunnu
-    
-    Dashboard access cheyyumbol tenant status check cheyyanam:
-    - Trial expired aayo?
-    - Subscription cancelled aayo?
-    - Payment pending aayo?
-    
-    Args:
-        tenant_id: Current tenant ID
-        db: Database session
-    
-    Returns:
-        Tenant: Active tenant object
+    Get current active tenant with subscription checks
     
     Raises:
-        HTTPException: If tenant inactive or subscription issues
+        HTTPException: If tenant is inactive, expired, or has payment pending
     """
+    # Fetch tenant from database
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     
     if not tenant:
@@ -137,120 +49,106 @@ def get_current_active_tenant(
             detail="Tenant not found"
         )
     
-    # Tenant active check
-    if not tenant.is_active:
+    # Check if tenant is active
+    if not getattr(tenant, "is_active", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant account is inactive"
         )
     
-    # Trial period check (if applicable)
-    # Production-il proper subscription check implement cheyyum
+    today = date.today()
+    
+    # Check trial period
+    trial_end_date = getattr(tenant, "trial_end_date", None)
+    if trial_end_date and trial_end_date < today:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant trial period has expired"
+        )
+    
+    # Check subscription
+    subscription_end_date = getattr(tenant, "subscription_end_date", None)
+    if subscription_end_date and subscription_end_date < today:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant subscription has expired"
+        )
+    
+    # Check payment status
+    if getattr(tenant, "is_payment_pending", False):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Payment pending for this tenant"
+        )
     
     return tenant
 
 
-def check_dashboard_access(
+def get_tenant_user(
+    current_user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_active_tenant)
-) -> bool:
+) -> tuple[User, Tenant]:
     """
-    Check if tenant has access to dashboard features
-    
-    Premium features check cheyyunnu:
-    - Basic plan: Limited dashboard
-    - Pro plan: Full dashboard
-    - Enterprise: Advanced analytics
-    
-    Args:
-        tenant: Current tenant
-    
-    Returns:
-        bool: True if has access
-    
-    Raises:
-        HTTPException: If no access to dashboard
+    Get both current user and tenant in one dependency
+    Useful for routes that need both
     """
-    # Subscription-based feature access
-    # Production-il implement cheyyendath
-    
-    # For now, allow all active tenants
-    return True
+    return current_user, tenant
 
 
-def get_pagination_params(
-    skip: int = 0,
-    limit: int = 100
-) -> dict:
+# -------------------------
+# TENANT ROLE-BASED ACCESS
+# -------------------------
+def require_tenant_admin(
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_active_tenant)
+) -> User:
     """
-    Pagination parameters for list endpoints
-    
-    Dashboard-il list APIs-inu pagination venam
-    Large datasets handle cheyyan vendi
-    
-    Args:
-        skip: Number of records to skip
-        limit: Maximum records to return
-    
-    Returns:
-        dict: Pagination params
+    Require user to be admin of their tenant
     """
-    # Limit maximum page size
-    if limit > 1000:
-        limit = 1000
+    # Check if user is tenant admin
+    is_tenant_admin = getattr(current_user, "is_tenant_admin", False)
     
-    if skip < 0:
-        skip = 0
+    if not is_tenant_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant admin privileges required"
+        )
     
-    return {"skip": skip, "limit": limit}
+    return current_user
 
 
-def validate_date_range(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-) -> dict:
+def require_tenant_owner(
+    current_user: User = Depends(get_current_user),
+    tenant: Tenant = Depends(get_current_active_tenant)
+) -> User:
     """
-    Date range validation for filtered queries
-    
-    Dashboard-il date filter apply cheyyumbol validation
-    
-    Args:
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-    
-    Returns:
-        dict: Validated date range
-    
-    Raises:
-        HTTPException: If dates invalid
+    Require user to be the owner of their tenant
     """
-    from datetime import datetime
+    # Check if user is the tenant owner
+    if tenant.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant owner privileges required"
+        )
     
-    result = {}
+    return current_user
+
+
+# -------------------------
+# OPTIONAL DEPENDENCIES
+# -------------------------
+def get_optional_user(
+    credentials: Optional[str] = None,
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """
+    Get current user if authenticated, None otherwise
+    Useful for endpoints that work both with and without authentication
+    """
+    if not credentials:
+        return None
     
-    if start_date:
-        try:
-            result['start_date'] = datetime.strptime(start_date, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid start_date format. Use YYYY-MM-DD"
-            )
-    
-    if end_date:
-        try:
-            result['end_date'] = datetime.strptime(end_date, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid end_date format. Use YYYY-MM-DD"
-            )
-    
-    # End date should be after start date
-    if 'start_date' in result and 'end_date' in result:
-        if result['end_date'] < result['start_date']:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="end_date must be after start_date"
-            )
-    
-    return result
+    try:
+        return get_current_user(credentials, db)
+    except HTTPException:
+        return None

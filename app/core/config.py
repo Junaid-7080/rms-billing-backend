@@ -3,7 +3,7 @@ Application configuration
 Loads settings from environment variables
 """
 from pydantic_settings import BaseSettings
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import field_validator
 
 
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
 
     # CORS Origins
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:5173"]
 
     # File uploads
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024
@@ -60,10 +60,26 @@ class Settings(BaseSettings):
     FREE_TIER_USER_LIMIT: int = 1
 
     @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
     def parse_cors_origins(cls, v):
+        """Parse CORS origins from string or list"""
+        # If already a list, return as is
+        if isinstance(v, list):
+            return v
+        
+        # If string, split by comma
         if isinstance(v, str):
-            return [i.strip() for i in v.split(",")]
-        return v
+            # Handle empty string
+            if not v or v.strip() == "":
+                return []
+            
+            # Split by comma and strip whitespace
+            origins = [origin.strip() for origin in v.split(",")]
+            # Filter out empty strings
+            return [origin for origin in origins if origin]
+        
+        # Default fallback
+        return ["http://localhost:3000", "http://localhost:5173"]
 
     class Config:
         env_file = ".env"

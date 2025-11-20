@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_tenant
+from app.core.dependencies import get_current_user, get_current_tenant, get_current_active_tenant
 from app.models.user import User
 from app.schemas.dashboard import (
     DashboardMetrics,

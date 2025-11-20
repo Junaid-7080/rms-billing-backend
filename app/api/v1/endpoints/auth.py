@@ -2,7 +2,9 @@
 Authentication API endpoints
 Handles user registration, email verification, login, token refresh, and logout
 """
+from fastapi import Body
 from datetime import datetime, timedelta
+from app.core.security import get_current_user
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
@@ -346,3 +348,54 @@ async def logout(
         db.commit()
     
     return {"message": "Logged out successfully"}
+
+# =============================================================
+#  2.6 CHANGE USER ROLE (Admin Only)
+# =============================================================
+
+@router.put("/users/{user_id}/change-role")
+async def change_role(
+    user_id: str,
+    data: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)   # ⬅️ uses JWT auth
+):
+    """
+    Change a user's role.
+    Allowed roles: admin, manager, user
+    """
+
+    # Ensure logged-in user is admin
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admin users can change roles"
+        )
+
+    allowed_roles = ["admin", "manager", "user"]
+
+    new_role = data.get("role")
+    if new_role not in allowed_roles:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid role. Allowed roles: {allowed_roles}"
+        )
+
+    # Find user to update
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    old_role = user.role
+    user.role = new_role
+    db.commit()
+
+    return {
+        "message": "User role updated successfully",
+        "userId": str(user.id),
+        "oldRole": old_role,
+        "newRole": new_role
+    }
