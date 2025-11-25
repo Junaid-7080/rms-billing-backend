@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 from uuid import uuid4
@@ -16,6 +16,7 @@ from app.models.customer import Customer
 from app.models.service import ServiceType
 from app.models.receipt import ReceiptAllocation
 from app.models.credit_note import CreditNote
+from app.models.company import Company
 from app.schemas.invoice import (
     InvoiceCreate,
     InvoiceUpdate,
@@ -25,6 +26,8 @@ from app.schemas.invoice import (
     EmailInvoiceRequest,
     EmailInvoiceResponse
 )
+from app.services.pdf import generate_invoice_pdf
+from app.services.email import send_invoice_email as send_email
 
 router = APIRouter(prefix="/api/v1/invoices", tags=["Invoices"])
 
@@ -42,9 +45,15 @@ def calculate_line_item_amounts(line_item_data):
     }
 
 
-def calculate_invoice_status(invoice):
-    """Calculate invoice status based on due date and payment status"""
-    if invoice.payment_status == 'paid':
+def calculate_invoice_status(invoice, db: Session):
+    """Calculate invoice status based on receipts and due date"""
+    # Check if invoice is fully paid by checking receipt allocations
+    # NOTE: Change 'allocated_amount' to your actual column name if different
+    total_allocated = db.query(func.sum(ReceiptAllocation.allocated_amount)).filter(
+        ReceiptAllocation.invoice_id == invoice.id
+    ).scalar() or 0
+    
+    if total_allocated >= invoice.total:
         return 'Paid'
     elif invoice.due_date < date.today():
         return 'Overdue'
@@ -52,7 +61,7 @@ def calculate_invoice_status(invoice):
         return 'Pending'
 
 
-def build_invoice_response(invoice, customer, line_items_with_service):
+def build_invoice_response(invoice, customer, line_items_with_service, db: Session):
     """Build invoice response with all details"""
     line_items = [
         InvoiceLineItemResponse(
@@ -83,7 +92,7 @@ def build_invoice_response(invoice, customer, line_items_with_service):
         subtotal=float(invoice.subtotal),
         taxTotal=float(invoice.tax_total),
         total=float(invoice.total),
-        status=calculate_invoice_status(invoice),
+        status=calculate_invoice_status(invoice, db),
         notes=invoice.notes,
         createdAt=invoice.created_at.isoformat() if invoice.created_at else "",
         updatedAt=invoice.updated_at.isoformat() if invoice.updated_at else ""
@@ -105,11 +114,11 @@ def list_invoices(
     current_user: User = Depends(get_current_user)
 ):
     """Get paginated list of invoices with filtering and search"""
-    # 1. Get tenant_id from JWT
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2. Build query with filters
-    # 3. JOIN with customers for customer details
+    # Build query with filters
+    # JOIN with customers for customer details
     query = db.query(
         Invoice,
         Customer.name.label('customer_name'),
@@ -120,7 +129,7 @@ def list_invoices(
         Invoice.tenant_id == tenant_id
     )
     
-    # 7. Apply search filter
+    # Apply search filter
     if search:
         search_pattern = f"%{search}%"
         query = query.filter(
@@ -130,22 +139,45 @@ def list_invoices(
             )
         )
     
-    # Apply status filter (calculated dynamically)
+    # Apply status filter (calculated dynamically based on receipts)
     if status:
         today = date.today()
         if status == "Paid":
-            query = query.filter(Invoice.payment_status == 'paid')
+            # Subquery to get invoices that are fully paid
+            paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
+                ReceiptAllocation.invoice_id
+            ).having(
+                func.sum(ReceiptAllocation.amount) >= Invoice.total
+            ).subquery()
+            
+            query = query.filter(Invoice.id.in_(paid_invoice_ids))
+            
         elif status == "Overdue":
+            # Invoices that are not fully paid and past due date
+            paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
+                ReceiptAllocation.invoice_id
+            ).having(
+                func.sum(ReceiptAllocation.amount) >= Invoice.total
+            ).subquery()
+            
             query = query.filter(
                 and_(
-                    Invoice.payment_status != 'paid',
+                    ~Invoice.id.in_(paid_invoice_ids),
                     Invoice.due_date < today
                 )
             )
+            
         elif status == "Pending":
+            # Invoices that are not fully paid and not overdue
+            paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
+                ReceiptAllocation.invoice_id
+            ).having(
+                func.sum(ReceiptAllocation.amount) >= Invoice.total
+            ).subquery()
+            
             query = query.filter(
                 and_(
-                    Invoice.payment_status != 'paid',
+                    ~Invoice.id.in_(paid_invoice_ids),
                     Invoice.due_date >= today
                 )
             )
@@ -163,23 +195,32 @@ def list_invoices(
     # Count total
     total = query.count()
     
-    # 8. Apply sorting
+    # Apply sorting
     if sortBy == "invoiceNumber":
-        query = query.order_by(Invoice.invoice_number.asc() if sortOrder == "asc" else Invoice.invoice_number.desc())
+        query = query.order_by(
+            Invoice.invoice_number.asc() if sortOrder == "asc" 
+            else Invoice.invoice_number.desc()
+        )
     elif sortBy == "invoiceDate":
-        query = query.order_by(Invoice.invoice_date.asc() if sortOrder == "asc" else Invoice.invoice_date.desc())
+        query = query.order_by(
+            Invoice.invoice_date.asc() if sortOrder == "asc" 
+            else Invoice.invoice_date.desc()
+        )
     elif sortBy == "total":
-        query = query.order_by(Invoice.total.asc() if sortOrder == "asc" else Invoice.total.desc())
+        query = query.order_by(
+            Invoice.total.asc() if sortOrder == "asc" 
+            else Invoice.total.desc()
+        )
     
     # Apply pagination
     offset = (page - 1) * limit
     results = query.offset(offset).limit(limit).all()
     
-    # 9. Return nested structure with line items
+    # Return nested structure with line items
     data = []
     for invoice, customer_name, customer_gst in results:
-        # 4. JOIN with invoice_line_items for line items
-        # 5. JOIN with service_types for service names
+        # JOIN with invoice_line_items for line items
+        # JOIN with service_types for service names
         line_items_query = db.query(
             InvoiceLineItem,
             ServiceType.name.label('service_name')
@@ -195,7 +236,7 @@ def list_invoices(
             'gst_number': customer_gst
         })()
         
-        data.append(build_invoice_response(invoice, customer, line_items_query))
+        data.append(build_invoice_response(invoice, customer, line_items_query, db))
     
     total_pages = (total + limit - 1) // limit
     
@@ -218,11 +259,11 @@ def get_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Get single invoice by ID with full details including nested line items"""
-    # 1. Get tenant_id from JWT
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2. Query invoice by ID AND tenant_id
-    # 3. JOIN with customer
+    # Query invoice by ID AND tenant_id
+    # JOIN with customer
     result = db.query(
         Invoice,
         Customer
@@ -241,7 +282,7 @@ def get_invoice(
     
     invoice, customer = result
     
-    # 4. Fetch all line items with service type names
+    # Fetch all line items with service type names
     line_items_query = db.query(
         InvoiceLineItem,
         ServiceType.name.label('service_name')
@@ -251,8 +292,8 @@ def get_invoice(
         InvoiceLineItem.invoice_id == invoice.id
     ).order_by(InvoiceLineItem.created_at.asc()).all()
     
-    # 5. Return complete invoice object
-    return build_invoice_response(invoice, customer, line_items_query)
+    # Return complete invoice object
+    return build_invoice_response(invoice, customer, line_items_query, db)
 
 
 @router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
@@ -262,16 +303,13 @@ def create_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Create new invoice with line items"""
-    # 1. Get tenant_id and user_id from JWT
+    # Get tenant_id and user_id from JWT
     tenant_id = current_user.tenant_id
     user_id = current_user.id
     
-    # 2. Check subscription limits (TODO: implement properly)
-    # For now, skip this check
+    # Validate all fields (handled by Pydantic)
     
-    # 3. Validate all fields (handled by Pydantic)
-    
-    # 4. Verify customer exists and belongs to tenant
+    # Verify customer exists and belongs to tenant
     customer = db.query(Customer).filter(
         Customer.id == payload.customerId,
         Customer.tenant_id == tenant_id
@@ -283,7 +321,7 @@ def create_invoice(
             detail="Invalid customer"
         )
     
-    # 5. Verify all service types exist and belong to tenant
+    # Verify all service types exist and belong to tenant
     service_type_ids = [li.serviceType for li in payload.lineItems]
     service_types = db.query(ServiceType).filter(
         ServiceType.id.in_(service_type_ids),
@@ -296,9 +334,7 @@ def create_invoice(
             detail="Invalid service type"
         )
     
-    # 6. Validate due date >= invoice date (handled by Pydantic)
-    
-    # 7. Check invoice number uniqueness or auto-generate
+    # Check invoice number uniqueness or auto-generate
     if payload.invoiceNumber:
         existing = db.query(Invoice).filter(
             Invoice.tenant_id == tenant_id,
@@ -319,7 +355,7 @@ def create_invoice(
         ).scalar() + 1
         invoice_number = f"INV-{year}-{count:04d}"
     
-    # 8. Calculate line item amounts
+    # Calculate line item amounts
     line_items_data = []
     for li in payload.lineItems:
         amounts = calculate_line_item_amounts(li)
@@ -328,15 +364,12 @@ def create_invoice(
             'amounts': amounts
         })
     
-    # 9. Calculate invoice totals
+    # Calculate invoice totals
     subtotal = sum(li['amounts']['amount'] for li in line_items_data)
     tax_total = sum(li['amounts']['tax_amount'] for li in line_items_data)
     total = subtotal + tax_total
     
-    # 10. Set initial status based on due date
-    initial_status = 'unpaid'  # payment_status field
-    
-    # 11. Insert invoice record
+    # Insert invoice record (NO payment_status field)
     invoice_id = uuid4()
     invoice = Invoice(
         id=invoice_id,
@@ -349,7 +382,6 @@ def create_invoice(
         subtotal=subtotal,
         tax_total=tax_total,
         total=total,
-        payment_status=initial_status,
         notes=payload.notes,
         created_by=user_id,
         created_at=datetime.utcnow(),
@@ -358,7 +390,7 @@ def create_invoice(
     
     db.add(invoice)
     
-    # 12. Insert line items
+    # Insert line items
     for li_data in line_items_data:
         line_item = InvoiceLineItem(
             id=uuid4(),
@@ -377,8 +409,6 @@ def create_invoice(
         )
         db.add(line_item)
     
-    # 13. Increment tenant invoice count (TODO)
-    
     db.commit()
     db.refresh(invoice)
     
@@ -392,7 +422,7 @@ def create_invoice(
         InvoiceLineItem.invoice_id == invoice.id
     ).order_by(InvoiceLineItem.created_at.asc()).all()
     
-    return build_invoice_response(invoice, customer, line_items_query)
+    return build_invoice_response(invoice, customer, line_items_query, db)
 
 
 @router.put("/{id}", response_model=InvoiceResponse)
@@ -402,11 +432,11 @@ def update_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update existing invoice (only if status is Pending or Draft)"""
-    # 1. Get tenant_id from JWT
+    """Update existing invoice (only if not fully paid)"""
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2. Verify invoice exists and belongs to tenant
+    # Verify invoice exists and belongs to tenant
     invoice = db.query(Invoice).filter(
         Invoice.id == id,
         Invoice.tenant_id == tenant_id
@@ -418,14 +448,18 @@ def update_invoice(
             detail="Invoice not found"
         )
     
-    # 3. Check if invoice can be edited
-    if invoice.payment_status == 'paid':
+    # Check if invoice is fully paid (by checking receipts)
+    total_allocated = db.query(func.sum(ReceiptAllocation.amount)).filter(
+        ReceiptAllocation.invoice_id == id
+    ).scalar() or 0
+    
+    if total_allocated >= invoice.total:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot edit paid invoices"
         )
     
-    # Check for receipts allocated
+    # Check for any receipt allocations
     receipt_count = db.query(func.count(ReceiptAllocation.id)).filter(
         ReceiptAllocation.invoice_id == id
     ).scalar()
@@ -436,7 +470,7 @@ def update_invoice(
             detail="Cannot edit invoices with receipts allocated"
         )
     
-    # 4. Validate all fields (same as POST)
+    # Validate customer
     customer = db.query(Customer).filter(
         Customer.id == payload.customerId,
         Customer.tenant_id == tenant_id
@@ -475,12 +509,12 @@ def update_invoice(
                 detail="Invoice number already exists"
             )
     
-    # 5. Delete existing line items
+    # Delete existing line items
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id == id
     ).delete()
     
-    # 6. Insert new line items with recalculated amounts
+    # Insert new line items with recalculated amounts
     line_items_data = []
     for li in payload.lineItems:
         amounts = calculate_line_item_amounts(li)
@@ -489,7 +523,7 @@ def update_invoice(
             'amounts': amounts
         })
     
-    # 7. Recalculate invoice totals
+    # Recalculate invoice totals
     subtotal = sum(li['amounts']['amount'] for li in line_items_data)
     tax_total = sum(li['amounts']['tax_amount'] for li in line_items_data)
     total = subtotal + tax_total
@@ -513,7 +547,7 @@ def update_invoice(
         )
         db.add(line_item)
     
-    # 8. Update invoice record
+    # Update invoice record (NO payment_status)
     invoice.invoice_number = payload.invoiceNumber or invoice.invoice_number
     invoice.invoice_date = payload.invoiceDate
     invoice.customer_id = payload.customerId
@@ -538,7 +572,7 @@ def update_invoice(
         InvoiceLineItem.invoice_id == invoice.id
     ).order_by(InvoiceLineItem.created_at.asc()).all()
     
-    return build_invoice_response(invoice, customer, line_items_query)
+    return build_invoice_response(invoice, customer, line_items_query, db)
 
 
 @router.delete("/{id}")
@@ -548,10 +582,10 @@ def delete_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Delete invoice (only if no payments received)"""
-    # 1. Get tenant_id from JWT
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2. Verify invoice exists
+    # Verify invoice exists
     invoice = db.query(Invoice).filter(
         Invoice.id == id,
         Invoice.tenant_id == tenant_id
@@ -563,7 +597,7 @@ def delete_invoice(
             detail="Invoice not found"
         )
     
-    # 3. Check for receipt allocations
+    # Check for receipt allocations
     receipt_count = db.query(func.count(ReceiptAllocation.id)).filter(
         ReceiptAllocation.invoice_id == id
     ).scalar()
@@ -574,7 +608,7 @@ def delete_invoice(
             detail="Cannot delete invoices with receipts"
         )
     
-    # 4. Check for credit notes
+    # Check for credit notes
     credit_note_count = db.query(func.count(CreditNote.id)).filter(
         CreditNote.invoice_id == id
     ).scalar()
@@ -585,15 +619,13 @@ def delete_invoice(
             detail="Cannot delete invoices with credit notes"
         )
     
-    # 5. Delete line items first
+    # Delete line items first
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id == id
     ).delete()
     
-    # 6. Delete invoice
+    # Delete invoice
     db.delete(invoice)
-    
-    # 7. Decrement tenant invoice count (TODO)
     
     db.commit()
     
@@ -610,10 +642,10 @@ def get_invoice_pdf(
     current_user: User = Depends(get_current_user)
 ):
     """Generate and download invoice PDF"""
-    # 1. Get tenant_id from JWT
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2. Fetch invoice with all details
+    # Fetch invoice with all details
     result = db.query(
         Invoice,
         Customer
@@ -632,17 +664,15 @@ def get_invoice_pdf(
     
     invoice, customer = result
     
-    # 3. Get company data
-    from app.models.company import Company
+    # Get company data
     company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
     
-    # 4. Get line items
+    # Get line items
     line_items = db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id == id
     ).all()
     
-    # 5. Prepare invoice data
-    from app.services.pdf import generate_invoice_pdf
+    # Prepare invoice data
     invoice_data = {
         "invoiceNumber": invoice.invoice_number,
         "invoiceDate": invoice.invoice_date.isoformat(),
@@ -656,16 +686,16 @@ def get_invoice_pdf(
                 "quantity": float(li.quantity),
                 "rate": float(li.rate),
                 "taxRate": float(li.tax_rate),
-                "totalAmount": float(li.total_amount)
+                "amount": float(li.amount),
+                "taxAmount": float(li.tax_amount),
+                "total": float(li.total)
             }
             for li in line_items
         ],
         "subtotal": float(invoice.subtotal),
-        "taxAmount": float(invoice.tax_amount),
-        "discountAmount": float(invoice.discount_amount),
+        "taxTotal": float(invoice.tax_total),
         "total": float(invoice.total),
-        "notes": invoice.notes or "",
-        "terms": invoice.terms or ""
+        "notes": invoice.notes or ""
     }
     
     company_data = {
@@ -674,11 +704,10 @@ def get_invoice_pdf(
         "taxId": company.tax_id if company else ""
     }
     
-    # 6. Generate PDF
+    # Generate PDF
     pdf_content = generate_invoice_pdf(invoice_data, company_data)
     
-    # 7. Return PDF as download
-    from fastapi.responses import Response
+    # Return PDF as download
     return Response(
         content=pdf_content,
         media_type="application/pdf",
@@ -696,7 +725,7 @@ def send_invoice_email(
     current_user: User = Depends(get_current_user)
 ):
     """Email invoice PDF to customer"""
-    # 1. Verify invoice exists
+    # Verify invoice exists
     tenant_id = current_user.tenant_id
     
     result = db.query(
@@ -717,17 +746,15 @@ def send_invoice_email(
     
     invoice, customer = result
     
-    # 2. Get company data
-    from app.models.company import Company
+    # Get company data
     company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
     
-    # 3. Get line items
+    # Get line items
     line_items = db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id == id
     ).all()
     
-    # 4. Prepare invoice data
-    from app.services.pdf import generate_invoice_pdf
+    # Prepare invoice data
     invoice_data = {
         "invoiceNumber": invoice.invoice_number,
         "invoiceDate": invoice.invoice_date.isoformat(),
@@ -741,16 +768,16 @@ def send_invoice_email(
                 "quantity": float(li.quantity),
                 "rate": float(li.rate),
                 "taxRate": float(li.tax_rate),
-                "totalAmount": float(li.total_amount)
+                "amount": float(li.amount),
+                "taxAmount": float(li.tax_amount),
+                "total": float(li.total)
             }
             for li in line_items
         ],
         "subtotal": float(invoice.subtotal),
-        "taxAmount": float(invoice.tax_amount),
-        "discountAmount": float(invoice.discount_amount),
+        "taxTotal": float(invoice.tax_total),
         "total": float(invoice.total),
-        "notes": invoice.notes or "",
-        "terms": invoice.terms or ""
+        "notes": invoice.notes or ""
     }
     
     company_data = {
@@ -759,11 +786,10 @@ def send_invoice_email(
         "taxId": company.tax_id if company else ""
     }
     
-    # 5. Generate PDF
+    # Generate PDF
     pdf_content = generate_invoice_pdf(invoice_data, company_data)
     
-    # 6. Send email with PDF attachment
-    from app.services.email import send_invoice_email as send_email
+    # Send email with PDF attachment
     success = send_email(
         to_email=payload.recipientEmail,
         invoice_number=invoice.invoice_number,
@@ -776,10 +802,10 @@ def send_invoice_email(
             detail="Failed to send email. Please check SMTP configuration."
         )
     
-    # 7. Return success response
-    return {
-        "success": True,
-        "message": f"Invoice sent to {payload.recipientEmail}",
-        "sentTo": payload.recipientEmail,
-        "sentAt": datetime.utcnow().isoformat()
-    }
+    # Return success response
+    return EmailInvoiceResponse(
+        success=True,
+        message=f"Invoice sent to {payload.recipientEmail}",
+        sentTo=payload.recipientEmail,
+        sentAt=datetime.utcnow().isoformat()
+    )

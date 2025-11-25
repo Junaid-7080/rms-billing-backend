@@ -73,10 +73,10 @@ def list_receipts(
     current_user: User = Depends(get_current_user)
 ):
     """Get list of all payment receipts"""
-    # 1. Get tenant_id from JWT
+    # Get tenant_id from JWT
     tenant_id = current_user.tenant_id
     
-    # 2-3. Query receipts with JOINs - JOIN with customers
+    # Query receipts with JOINs - JOIN with customers
     query = db.query(
         Receipt,
         Customer.name.label('customer_name')
@@ -86,7 +86,7 @@ def list_receipts(
         Receipt.tenant_id == tenant_id
     )
     
-    # 6. Apply filters
+    # Apply filters
     if search:
         search_pattern = f"%{search}%"
         query = query.filter(
@@ -114,14 +114,14 @@ def list_receipts(
     # Order by receipt date DESC
     query = query.order_by(Receipt.receipt_date.desc())
     
-    # 8. Apply pagination
+    # Apply pagination
     offset = (page - 1) * limit
     results = query.offset(offset).limit(limit).all()
     
     # Build response with allocations
     data = []
     for receipt, customer_name in results:
-        # 4-5. JOIN with receipt_allocations and invoices for invoice numbers
+        # JOIN with receipt_allocations and invoices for invoice numbers
         allocations_query = db.query(
             ReceiptAllocation,
             Invoice.invoice_number
@@ -195,13 +195,11 @@ def create_receipt(
     current_user: User = Depends(get_current_user)
 ):
     """Record a payment receipt and allocate to invoices"""
-    # 1. Get tenant_id and user_id from JWT
+    # Get tenant_id and user_id from JWT
     tenant_id = current_user.tenant_id
     user_id = current_user.id
     
-    # 2. Validate all fields (handled by Pydantic)
-    
-    # 3. Verify customer exists
+    # Verify customer exists
     customer = db.query(Customer).filter(
         Customer.id == payload.customerId,
         Customer.tenant_id == tenant_id
@@ -213,7 +211,7 @@ def create_receipt(
             detail="Invalid customer"
         )
     
-    # 4. Verify all invoices
+    # Verify all invoices
     invoice_ids = [alloc.invoiceId for alloc in payload.allocations]
     invoices = db.query(Invoice).filter(
         Invoice.id.in_(invoice_ids),
@@ -241,7 +239,7 @@ def create_receipt(
     
     existing_alloc_map = {str(inv_id): float(total) for inv_id, total in existing_allocations}
     
-    # 5. Validate allocations
+    # Validate allocations
     total_allocated = 0
     for alloc in payload.allocations:
         invoice = invoice_map[alloc.invoiceId]
@@ -271,7 +269,7 @@ def create_receipt(
             detail=f"Total allocations ({total_allocated}) exceed amount received ({payload.amountReceived})"
         )
     
-    # 6. Check receipt ID uniqueness or auto-generate
+    # Check receipt ID uniqueness or auto-generate
     if payload.receiptId:
         existing = db.query(Receipt).filter(
             Receipt.tenant_id == tenant_id,
@@ -292,10 +290,10 @@ def create_receipt(
         ).scalar() + 1
         receipt_number = f"RCT-{year}-{count:04d}"
     
-    # 7. Calculate unapplied amount
+    # Calculate unapplied amount
     unapplied_amount = payload.amountReceived - total_allocated
     
-    # 8. Insert receipt record
+    # Insert receipt record
     receipt_id = uuid4()
     receipt = Receipt(
         id=receipt_id,
@@ -314,7 +312,7 @@ def create_receipt(
     
     db.add(receipt)
     
-    # 9. Insert allocation records for each invoice
+    # Insert allocation records for each invoice
     invoices_updated = []
     for alloc in payload.allocations:
         allocation = ReceiptAllocation(
@@ -328,18 +326,10 @@ def create_receipt(
         )
         db.add(allocation)
         
-        # 10. For each allocated invoice, update status
+        # Update invoice updated_at timestamp
+        # Note: Invoice status is now calculated dynamically based on receipt allocations
+        # So we don't need to update payment_status field anymore
         invoice = invoice_map[alloc.invoiceId]
-        existing_paid = existing_alloc_map.get(alloc.invoiceId, 0)
-        new_total_paid = existing_paid + alloc.amountAllocated
-        outstanding = float(invoice.total) - new_total_paid
-        
-        if outstanding <= 0.01:  # Consider paid if outstanding is negligible
-            invoice.payment_status = 'paid'
-            invoice.payment_date = payload.receiptDate
-        else:
-            invoice.payment_status = 'partially_paid'
-        
         invoice.updated_at = datetime.utcnow()
         invoices_updated.append(invoice.invoice_number)
     
@@ -356,5 +346,5 @@ def create_receipt(
         ReceiptAllocation.receipt_id == receipt.id
     ).all()
     
-    # 11. Return created receipt with invoices updated
+    # Return created receipt with invoices updated
     return build_receipt_response(receipt, customer.name, allocations_query, include_invoices_updated=True)

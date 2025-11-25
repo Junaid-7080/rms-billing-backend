@@ -1,21 +1,21 @@
-from pydantic import BaseModel, EmailStr, constr, validator
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
 import re
 
 class CustomerCreate(BaseModel):
-    code: constr(min_length=2)
-    name: constr(min_length=2)
+    code: str = Field(..., min_length=2)
+    name: str = Field(..., min_length=2)
     type: str  # UUID of client type
-    address: constr(min_length=10)
+    address: str = Field(..., min_length=10)
     email: EmailStr
-    whatsapp: constr(min_length=10)
-    phone: constr(min_length=10)
-    contactPerson: constr(min_length=2)
-    gstNumber: Optional[constr(min_length=15, max_length=15)] = None
-    panNumber: Optional[constr(min_length=10, max_length=10)] = None
+    whatsapp: str = Field(..., min_length=10)
+    phone: str = Field(..., min_length=10)
+    contactPerson: str = Field(..., min_length=2)
+    gstNumber: Optional[str] = Field(None, min_length=15, max_length=15)
+    panNumber: Optional[str] = Field(None, min_length=10, max_length=10)
     paymentTerms: int
     accountManager: str  # UUID of account manager
-    isActive: Optional[bool] = True
+    isActive: bool = True
     
     @validator('gstNumber')
     def validate_gst_number(cls, v):
