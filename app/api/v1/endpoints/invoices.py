@@ -144,10 +144,11 @@ def list_invoices(
         today = date.today()
         if status == "Paid":
             # Subquery to get invoices that are fully paid
+            # NOTE: Change 'allocated_amount' to your actual column name if different
             paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
                 ReceiptAllocation.invoice_id
             ).having(
-                func.sum(ReceiptAllocation.amount) >= Invoice.total
+                func.sum(ReceiptAllocation.allocated_amount) >= Invoice.total
             ).subquery()
             
             query = query.filter(Invoice.id.in_(paid_invoice_ids))
@@ -157,7 +158,7 @@ def list_invoices(
             paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
                 ReceiptAllocation.invoice_id
             ).having(
-                func.sum(ReceiptAllocation.amount) >= Invoice.total
+                func.sum(ReceiptAllocation.allocated_amount) >= Invoice.total
             ).subquery()
             
             query = query.filter(
@@ -172,7 +173,7 @@ def list_invoices(
             paid_invoice_ids = db.query(ReceiptAllocation.invoice_id).group_by(
                 ReceiptAllocation.invoice_id
             ).having(
-                func.sum(ReceiptAllocation.amount) >= Invoice.total
+                func.sum(ReceiptAllocation.allocated_amount) >= Invoice.total
             ).subquery()
             
             query = query.filter(
@@ -449,7 +450,8 @@ def update_invoice(
         )
     
     # Check if invoice is fully paid (by checking receipts)
-    total_allocated = db.query(func.sum(ReceiptAllocation.amount)).filter(
+    # NOTE: Change 'allocated_amount' to your actual column name if different
+    total_allocated = db.query(func.sum(ReceiptAllocation.allocated_amount)).filter(
         ReceiptAllocation.invoice_id == id
     ).scalar() or 0
     
