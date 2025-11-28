@@ -17,7 +17,6 @@ class Settings(BaseSettings):
 
     # API
     API_V1_PREFIX: str = "/api/v1"
-    API_V1_STR: str = "/api/v1"
 
     # Security
     SECRET_KEY: str
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 0
 
-    # Email (SMTP) - Optional for development
+    # Email (SMTP)
     MAIL_USERNAME: Optional[str] = None
     MAIL_PASSWORD: Optional[str] = None
     MAIL_FROM: Optional[str] = None
@@ -41,7 +40,11 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
 
     # CORS Origins
-    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: Union[List[str], str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://wonderful-kleicha-4e0920.netlify.app",
+    ]
 
     # File uploads
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024
@@ -63,22 +66,15 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors_origins(cls, v):
         """Parse CORS origins from string or list"""
-        # If already a list, return as is
         if isinstance(v, list):
             return v
-        
-        # If string, split by comma
+
         if isinstance(v, str):
-            # Handle empty string
-            if not v or v.strip() == "":
+            if not v.strip():
                 return []
-            
-            # Split by comma and strip whitespace
             origins = [origin.strip() for origin in v.split(",")]
-            # Filter out empty strings
             return [origin for origin in origins if origin]
-        
-        # Default fallback
+
         return ["http://localhost:3000", "http://localhost:5173"]
 
     class Config:
