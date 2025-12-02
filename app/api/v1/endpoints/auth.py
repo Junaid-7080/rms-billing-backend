@@ -195,17 +195,12 @@ async def login(
             detail="Tenant not found"
         )
     
-    # Check trial expiration
+    # Trial check removed - Login always allowed
     trial_days_remaining = None
-    if tenant.subscription_status == "trial":
-        if tenant.trial_end_date < datetime.utcnow():
-            raise HTTPException(
-                status_code=status.HTTP_423_LOCKED,
-                detail="Trial period has expired. Please upgrade your subscription."
-            )
+    if tenant.trial_end_date:
         trial_days_remaining = (tenant.trial_end_date - datetime.utcnow()).days
     
-    # Generate tokens
+    # Generate tokens (Allow login even if trial expired)
     access_token = create_access_token(
         data={
             "sub": str(user.id),
