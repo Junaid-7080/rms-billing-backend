@@ -2,6 +2,7 @@
 RMS Billing API - Main Application
 Multi-tenant SaaS billing system
 """
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -45,42 +46,42 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 async def startup_event():
     """Run on application startup - with graceful error handling"""
     logger.info("=" * 60)
-    logger.info("🚀 Starting RMS Billing API")
+    logger.info("≡ƒÜÇ Starting RMS Billing API")
     logger.info("=" * 60)
-    logger.info(f"📦 Version: {settings.VERSION}")
-    logger.info(f"🔧 Environment: {'Development' if settings.DEBUG else 'Production'}")
-    
+    logger.info(f"≡ƒôª Version: {settings.VERSION}")
+    logger.info(f"≡ƒöº Environment: {'Development' if settings.DEBUG else 'Production'}")
+
     # Import here to avoid blocking app startup
     try:
         from app.core.database import init_db, test_connection
-        
-        logger.info("🔍 Testing database connection...")
+
+        logger.info("≡ƒöì Testing database connection...")
         if test_connection():
-            logger.info("✅ Database connection successful")
+            logger.info("Γ£à Database connection successful")
             try:
                 init_db()
-                logger.info("✅ Database initialized successfully")
+                logger.info("Γ£à Database initialized successfully")
             except Exception as e:
-                logger.error(f"⚠️ Database initialization failed: {str(e)}")
-                logger.warning("⚠️ App will continue but database operations may fail")
+                logger.error(f"ΓÜá∩╕Å Database initialization failed: {str(e)}")
+                logger.warning("ΓÜá∩╕Å App will continue but database operations may fail")
         else:
-            logger.error("❌ Database connection failed")
+            logger.error("Γ¥î Database connection failed")
             logger.warning("=" * 60)
-            logger.warning("⚠️ APP STARTED IN DEGRADED MODE")
-            logger.warning("⚠️ Database is not accessible")
-            logger.warning("💡 Solutions:")
+            logger.warning("ΓÜá∩╕Å APP STARTED IN DEGRADED MODE")
+            logger.warning("ΓÜá∩╕Å Database is not accessible")
+            logger.warning("≡ƒÆí Solutions:")
             logger.warning("   1. Check Render database status")
             logger.warning("   2. Use local PostgreSQL instead")
             logger.warning("   3. Check DATABASE_URL in .env")
             logger.warning("=" * 60)
-    
+
     except Exception as e:
-        logger.error(f"❌ Startup error: {str(e)}")
-        logger.warning("⚠️ App will continue but some features may not work")
-    
+        logger.error(f"Γ¥î Startup error: {str(e)}")
+        logger.warning("ΓÜá∩╕Å App will continue but some features may not work")
+
     logger.info("=" * 60)
-    logger.info("✅ Application ready!")
-    logger.info(f"📝 API Docs: http://localhost:8000/docs")
+    logger.info("Γ£à Application ready!")
+    logger.info(f"≡ƒô¥ API Docs: http://localhost:8000/docs")
     logger.info("=" * 60)
 
 
@@ -103,7 +104,7 @@ async def health_check():
         db_status = "connected" if test_connection() else "disconnected"
     except Exception:
         db_status = "error"
-    
+
     return {
         "status": "healthy" if db_status == "connected" else "degraded",
         "version": settings.VERSION,
@@ -129,9 +130,13 @@ async def global_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Get port from environment variable, default to 8000 for local development
+    port = int(os.getenv("PORT", 8000))
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=settings.DEBUG
     )
