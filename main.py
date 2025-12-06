@@ -9,7 +9,6 @@ import logging
 
 from app.core.config import settings
 from app.api.v1.router import api_router
-from app.core.database import init_db
 
 # Configure logging
 logging.basicConfig(
@@ -29,9 +28,6 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-# Initialize database tables
-init_db()
-
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +39,49 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Run on application startup - with graceful error handling"""
+    logger.info("=" * 60)
+    logger.info("🚀 Starting RMS Billing API")
+    logger.info("=" * 60)
+    logger.info(f"📦 Version: {settings.VERSION}")
+    logger.info(f"🔧 Environment: {'Development' if settings.DEBUG else 'Production'}")
+    
+    # Import here to avoid blocking app startup
+    try:
+        from app.core.database import init_db, test_connection
+        
+        logger.info("🔍 Testing database connection...")
+        if test_connection():
+            logger.info("✅ Database connection successful")
+            try:
+                init_db()
+                logger.info("✅ Database initialized successfully")
+            except Exception as e:
+                logger.error(f"⚠️ Database initialization failed: {str(e)}")
+                logger.warning("⚠️ App will continue but database operations may fail")
+        else:
+            logger.error("❌ Database connection failed")
+            logger.warning("=" * 60)
+            logger.warning("⚠️ APP STARTED IN DEGRADED MODE")
+            logger.warning("⚠️ Database is not accessible")
+            logger.warning("💡 Solutions:")
+            logger.warning("   1. Check Render database status")
+            logger.warning("   2. Use local PostgreSQL instead")
+            logger.warning("   3. Check DATABASE_URL in .env")
+            logger.warning("=" * 60)
+    
+    except Exception as e:
+        logger.error(f"❌ Startup error: {str(e)}")
+        logger.warning("⚠️ App will continue but some features may not work")
+    
+    logger.info("=" * 60)
+    logger.info("✅ Application ready!")
+    logger.info(f"📝 API Docs: http://localhost:8000/docs")
+    logger.info("=" * 60)
 
 
 @app.get("/")
@@ -58,10 +97,18 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with database status"""
+    try:
+        from app.core.database import test_connection
+        db_status = "connected" if test_connection() else "disconnected"
+    except Exception:
+        db_status = "error"
+    
     return {
-        "status": "healthy",
-        "version": settings.VERSION
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "version": settings.VERSION,
+        "database": db_status,
+        "message": "API is running" if db_status == "connected" else "API running but database unavailable"
     }
 
 

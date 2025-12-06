@@ -2,7 +2,7 @@
 Company model - tenant's company profile/information
 """
 import uuid
-from sqlalchemy import Column, String, Date, Text, ForeignKey
+from sqlalchemy import Column, String, Date, Text, ForeignKey, Boolean, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -22,19 +22,43 @@ class Company(Base, TimestampMixin, TenantMixin):
 
     # Company details
     name = Column(String(255), nullable=False)
-    address = Column(Text, nullable=True)
-    registration_number = Column(String(100), nullable=True)
-    tax_id = Column(String(100), nullable=True)
-    gst_number = Column(String(15), nullable=True)
+    pan = Column(String(10), nullable=False)  # Changed from tax_id to pan
+    registration_number = Column(String(100), nullable=True)  # Keeping this for backward compatibility
+    
+    # Financial year
+    financial_year_from = Column(Date, nullable=False)  # Changed from financial_year_start
+    financial_year_to = Column(Date, nullable=False)  # New field
+    
+    # Address details - expanded to 3 lines
+    address_line1 = Column(String(255), nullable=False)
+    address_line2 = Column(String(255), nullable=True)
+    address_line3 = Column(String(255), nullable=True)
+    state = Column(String(100), nullable=False)
+    country = Column(String(100), nullable=False)
 
-    # Contact information
+    # Contact numbers - 3 contact fields
+    contact_no1 = Column(String(20), nullable=False)
+    contact_no2 = Column(String(20), nullable=True)
+    contact_no3 = Column(String(20), nullable=True)
+    
+    # GST details
+    gst_applicable = Column(Boolean, default=False, nullable=False)
+    gst_number = Column(String(15), nullable=True)
+    gst_state_code = Column(String(2), nullable=True)
+    gst_compounding_company = Column(Boolean, default=False, nullable=False)
+    
+    # Group company details
+    group_company = Column(Boolean, default=False, nullable=False)
+    group_code = Column(String(50), nullable=True)
+    
+    # Bank details (stored as JSON object)
+    bank_details = Column(JSON, nullable=False)
+    
+    # Legacy fields - keeping for backward compatibility (can be removed later)
     contact_name = Column(String(100), nullable=True)
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(20), nullable=True)
-
-    # Business details
-    financial_year_start = Column(Date, nullable=True)
-    currency = Column(String(3), default="INR", nullable=False)
+    currency = Column(String(3), default="INR", nullable=True)
     industry = Column(String(100), nullable=True)
     company_size = Column(String(50), nullable=True)
 

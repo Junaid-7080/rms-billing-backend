@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.company import Company
-from app.schemas.company import CompanyCreate, CompanyResponse
+from app.schemas.company import CompanyCreate, CompanyResponse, BankDetails
 
 router = APIRouter(prefix="/api/v1/company", tags=["Company"])
 
@@ -29,19 +29,27 @@ def get_company_profile(
     
     return CompanyResponse(
         id=str(company.id),
-        name=company.name,
-        address=company.address or "",
-        registrationNumber=company.registration_number or "",
-        taxId=company.tax_id or "",
-        contactName=company.contact_name or "",
-        contactEmail=company.contact_email or "",
-        contactPhone=company.contact_phone or "",
-        financialYearStart=company.financial_year_start,
-        currency=company.currency or "INR",
-        industry=company.industry or "",
-        companySize=company.company_size or "",
-        createdAt=company.created_at.isoformat() if company.created_at else "",
-        updatedAt=company.updated_at.isoformat() if company.updated_at else ""
+        companyName=company.company_name,
+        PAN=company.pan,
+        financialYearFrom=company.financial_year_from.isoformat(),
+        financialYearTo=company.financial_year_to.isoformat(),
+        addressLine1=company.address_line1,
+        addressLine2=company.address_line2,
+        addressLine3=company.address_line3,
+        state=company.state,
+        country=company.country,
+        contactNo1=company.contact_no1,
+        contactNo2=company.contact_no2,
+        contactNo3=company.contact_no3,
+        gstApplicable=company.gst_applicable,
+        gstNumber=company.gst_number,
+        gstStateCode=company.gst_state_code,
+        gstCompoundingCompany=company.gst_compounding_company,
+        groupCompany=company.group_company,
+        groupCode=company.group_code,
+        bankDetails=BankDetails(**company.bank_details),
+        createdAt=company.created_at.isoformat() if company.created_at else None,
+        updatedAt=company.updated_at.isoformat() if company.updated_at else None
     )
 
 
@@ -62,53 +70,82 @@ def create_or_update_company(
     # 2. Get tenant_id from JWT (already in current_user)
     tenant_id = current_user.tenant_id
     
-    # 3. Validate all fields (handled by Pydantic schema)
+    # 3. Validate GST fields
+    if payload.gstApplicable and (not payload.gstNumber or not payload.gstStateCode):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GST Number and GST State Code are required when GST is applicable"
+        )
     
-    # 4. Check if company already exists for tenant
+    # 4. Validate group company fields
+    if payload.groupCompany and not payload.groupCode:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Group Code is required when company is part of a group"
+        )
+    
+    # 5. Check if company already exists for tenant
     company = db.query(Company).filter(
         Company.tenant_id == tenant_id
     ).first()
     
-    is_new = company is None
+    # Convert bank details to dict
+    bank_details_dict = payload.bankDetails.model_dump()
     
     if company:
-        # 5. UPDATE existing company record
-        company.name = payload.name
-        company.address = payload.address
-        company.registration_number = payload.registrationNumber
-        company.tax_id = payload.taxId
-        company.contact_name = payload.contactName
-        company.contact_email = payload.contactEmail
-        company.contact_phone = payload.contactPhone
-        company.financial_year_start = payload.financialYearStart
-        company.currency = payload.currency
-        company.industry = payload.industry
-        company.company_size = payload.companySize
+        # 6. UPDATE existing company record
+        company.company_name = payload.companyName
+        company.pan = payload.PAN
+        company.financial_year_from = payload.financialYearFrom
+        company.financial_year_to = payload.financialYearTo
+        company.address_line1 = payload.addressLine1
+        company.address_line2 = payload.addressLine2
+        company.address_line3 = payload.addressLine3
+        company.state = payload.state
+        company.country = payload.country
+        company.contact_no1 = payload.contactNo1
+        company.contact_no2 = payload.contactNo2
+        company.contact_no3 = payload.contactNo3
+        company.gst_applicable = payload.gstApplicable
+        company.gst_number = payload.gstNumber
+        company.gst_state_code = payload.gstStateCode
+        company.gst_compounding_company = payload.gstCompoundingCompany
+        company.group_company = payload.groupCompany
+        company.group_code = payload.groupCode
+        company.bank_details = bank_details_dict
         company.updated_at = datetime.utcnow()
         company.created_by = current_user.id
     else:
-        # 6. INSERT new company record
+        # 7. INSERT new company record
         company = Company(
             id=uuid4(),
             tenant_id=tenant_id,
-            name=payload.name,
-            address=payload.address,
-            registration_number=payload.registrationNumber,
-            tax_id=payload.taxId,
-            contact_name=payload.contactName,
-            contact_email=payload.contactEmail,
-            contact_phone=payload.contactPhone,
-            financial_year_start=payload.financialYearStart,
-            currency=payload.currency,
-            industry=payload.industry,
-            company_size=payload.companySize,
+            company_name=payload.companyName,
+            pan=payload.PAN,
+            financial_year_from=payload.financialYearFrom,
+            financial_year_to=payload.financialYearTo,
+            address_line1=payload.addressLine1,
+            address_line2=payload.addressLine2,
+            address_line3=payload.addressLine3,
+            state=payload.state,
+            country=payload.country,
+            contact_no1=payload.contactNo1,
+            contact_no2=payload.contactNo2,
+            contact_no3=payload.contactNo3,
+            gst_applicable=payload.gstApplicable,
+            gst_number=payload.gstNumber,
+            gst_state_code=payload.gstStateCode,
+            gst_compounding_company=payload.gstCompoundingCompany,
+            group_company=payload.groupCompany,
+            group_code=payload.groupCode,
+            bank_details=bank_details_dict,
             created_by=current_user.id,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
         db.add(company)
     
-    # 7. Commit and return company details
+    # 8. Commit and return company details
     db.commit()
     db.refresh(company)
     
@@ -117,17 +154,25 @@ def create_or_update_company(
     
     return CompanyResponse(
         id=str(company.id),
-        name=company.name,
-        address=company.address,
-        registrationNumber=company.registration_number,
-        taxId=company.tax_id,
-        contactName=company.contact_name,
-        contactEmail=company.contact_email,
-        contactPhone=company.contact_phone,
-        financialYearStart=company.financial_year_start,
-        currency=company.currency,
-        industry=company.industry,
-        companySize=company.company_size,
-        createdAt=company.created_at.isoformat() if company.created_at else "",
-        updatedAt=company.updated_at.isoformat() if company.updated_at else ""
+        companyName=company.company_name,
+        PAN=company.pan,
+        financialYearFrom=company.financial_year_from.isoformat(),
+        financialYearTo=company.financial_year_to.isoformat(),
+        addressLine1=company.address_line1,
+        addressLine2=company.address_line2,
+        addressLine3=company.address_line3,
+        state=company.state,
+        country=company.country,
+        contactNo1=company.contact_no1,
+        contactNo2=company.contact_no2,
+        contactNo3=company.contact_no3,
+        gstApplicable=company.gst_applicable,
+        gstNumber=company.gst_number,
+        gstStateCode=company.gst_state_code,
+        gstCompoundingCompany=company.gst_compounding_company,
+        groupCompany=company.group_company,
+        groupCode=company.group_code,
+        bankDetails=BankDetails(**company.bank_details),
+        createdAt=company.created_at.isoformat() if company.created_at else None,
+        updatedAt=company.updated_at.isoformat() if company.updated_at else None
     )
