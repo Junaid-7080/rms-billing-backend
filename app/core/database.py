@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from typing import Generator
 from app.core.config import settings
@@ -13,6 +13,16 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+def test_connection() -> bool:
+    """Test database connection"""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        print(f"Database connection failed: {str(e)}")
+        return False
 
 def init_db():
     Base.metadata.create_all(bind=engine)
