@@ -29,7 +29,7 @@ def get_company_profile(
     
     return CompanyResponse(
         id=str(company.id),
-        companyName=company.company_name,
+        companyName=company.name,
         PAN=company.pan,
         financialYearFrom=company.financial_year_from.isoformat(),
         financialYearTo=company.financial_year_to.isoformat(),
@@ -94,7 +94,7 @@ def create_or_update_company(
     
     if company:
         # 6. UPDATE existing company record
-        company.company_name = payload.companyName
+        company.name = payload.companyName
         company.pan = payload.PAN
         company.financial_year_from = payload.financialYearFrom
         company.financial_year_to = payload.financialYearTo
@@ -120,7 +120,7 @@ def create_or_update_company(
         company = Company(
             id=uuid4(),
             tenant_id=tenant_id,
-            company_name=payload.companyName,
+            name=payload.companyName,
             pan=payload.PAN,
             financial_year_from=payload.financialYearFrom,
             financial_year_to=payload.financialYearTo,
@@ -154,7 +154,7 @@ def create_or_update_company(
     
     return CompanyResponse(
         id=str(company.id),
-        companyName=company.company_name,
+        companyName=company.name,
         PAN=company.pan,
         financialYearFrom=company.financial_year_from.isoformat(),
         financialYearTo=company.financial_year_to.isoformat(),
