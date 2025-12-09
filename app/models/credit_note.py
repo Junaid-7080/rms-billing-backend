@@ -16,6 +16,7 @@ class CreditNote(Base, TimestampMixin, TenantMixin):
     """
 
     __tablename__ = "credit_notes"
+    __table_args__ = {'extend_existing': True}  # ✅ ഇത് add ചെയ്യുക
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     credit_note_number = Column(String(50), nullable=False)
@@ -37,6 +38,7 @@ class CreditNote(Base, TimestampMixin, TenantMixin):
     # Credit note details
     reason = Column(String(255), nullable=True)
     amount = Column(DECIMAL(15, 2), default=0, nullable=False)
+    gst_rate = Column(DECIMAL(5, 2), nullable=True)  # ✅ GST rate in percentage (e.g., 18.00)
     gst_amount = Column(DECIMAL(15, 2), default=0, nullable=False)
     total_credit = Column(DECIMAL(15, 2), default=0, nullable=False)
 
