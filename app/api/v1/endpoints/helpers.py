@@ -95,7 +95,7 @@ def get_next_receipt_number(
     }
 
 
-@router.get("/api/v1/credit-notes/next-number")
+@router.get("/next-number")
 def get_next_credit_note_number(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -123,7 +123,7 @@ def get_next_credit_note_number(
     
     return {
         "nextNumber": next_number,
-        "pattern": "CN-YYYY-###",
+        "pattern": "CN-YYYY-####",
         "year": current_year,
         "sequence": sequence
     }
