@@ -4,6 +4,8 @@ from sqlalchemy import func, or_
 from uuid import uuid4
 from datetime import datetime, date
 from typing import Optional
+from decimal import Decimal
+
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -210,14 +212,14 @@ def create_credit_note(
         ).filter(
             CreditNote.invoice_id == payload.invoiceId,
             CreditNote.status != 'Cancelled'
-        ).scalar() or 0
+        ).scalar() or Decimal('0')
         
-        # Calculate GST amount and total credit for validation
-        gst_amount = payload.amount * (payload.gstRate / 100)
-        total_credit = payload.amount + gst_amount
+        # Calculate GST amount and total credit for validation - FIXED: Using Decimal
+        gst_amount = Decimal(str(payload.amount)) * (Decimal(str(payload.gstRate)) / Decimal('100'))
+        total_credit = Decimal(str(payload.amount)) + gst_amount
         
-        # Verify total credits don't exceed invoice amount
-        if existing_credits + total_credit > float(invoice.total):
+        # Verify total credits don't exceed invoice amount - FIXED: All Decimal types
+        if existing_credits + total_credit > Decimal(str(invoice.total)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Total credits ({existing_credits + total_credit}) would exceed invoice total ({invoice.total})"
@@ -244,11 +246,11 @@ def create_credit_note(
         ).scalar() + 1
         credit_note_number = f"CN-{year}-{count:04d}"
     
-    # 6. Calculate GST amount
-    gst_amount = payload.amount * (payload.gstRate / 100)
+    # 6. Calculate GST amount - Using Decimal
+    gst_amount = Decimal(str(payload.amount)) * (Decimal(str(payload.gstRate)) / Decimal('100'))
     
-    # 7. Calculate total credit
-    total_credit = payload.amount + gst_amount
+    # 7. Calculate total credit - Using Decimal
+    total_credit = Decimal(str(payload.amount)) + gst_amount
     
     # 8. Insert credit note record
     credit_note_id = uuid4()
