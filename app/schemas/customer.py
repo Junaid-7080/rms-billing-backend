@@ -1,11 +1,13 @@
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
 import re
+from uuid import UUID
 
 class CustomerCreate(BaseModel):
     code: str = Field(..., min_length=2)
     name: str = Field(..., min_length=2)
-    type: str  # UUID of client type
+    type: Optional[str] = None  # Display name (optional, for frontend display)
+    typeId: UUID  # UUID of client type (actual field to use)
     address: str = Field(..., min_length=10)
     email: EmailStr
     whatsapp: str = Field(..., min_length=10)
@@ -14,7 +16,8 @@ class CustomerCreate(BaseModel):
     gstNumber: Optional[str] = Field(None, min_length=15, max_length=15)
     panNumber: Optional[str] = Field(None, min_length=10, max_length=10)
     paymentTerms: int
-    accountManager: str  # UUID of account manager
+    accountManager: Optional[str] = None  # Display name (optional)
+    accountManagerId: UUID  # UUID of account manager (actual field to use)
     isActive: bool = True
     
     @validator('gstNumber')
@@ -42,14 +45,25 @@ class CustomerCreate(BaseModel):
         return v
 
 class CustomerUpdate(CustomerCreate):
-    pass
+    # All fields optional for update
+    code: Optional[str] = Field(None, min_length=2)
+    name: Optional[str] = Field(None, min_length=2)
+    typeId: Optional[UUID] = None
+    address: Optional[str] = Field(None, min_length=10)
+    email: Optional[EmailStr] = None
+    whatsapp: Optional[str] = Field(None, min_length=10)
+    phone: Optional[str] = Field(None, min_length=10)
+    contactPerson: Optional[str] = Field(None, min_length=2)
+    paymentTerms: Optional[int] = None
+    accountManagerId: Optional[UUID] = None
+    isActive: Optional[bool] = None
 
 class CustomerResponse(BaseModel):
     id: str
     code: str
     name: str
-    type: str
-    typeId: str
+    type: str  # Display name
+    typeId: str  # UUID
     address: str
     email: str
     whatsapp: str
@@ -58,8 +72,8 @@ class CustomerResponse(BaseModel):
     gstNumber: Optional[str] = None
     panNumber: Optional[str] = None
     paymentTerms: int
-    accountManager: str
-    accountManagerId: str
+    accountManager: str  # Display name
+    accountManagerId: str  # UUID
     isActive: bool
     createdAt: str
     updatedAt: str

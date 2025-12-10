@@ -263,7 +263,6 @@ def create_customer(
     # 13. Return created customer with joined data
     return _to_response(customer, client_type.name, account_manager.name)
 
-
 @router.put("/{id}", response_model=CustomerResponse)
 def update_customer(
     id: str,
@@ -287,76 +286,99 @@ def update_customer(
             detail="Customer not found"
         )
     
-    # 3. Validate all fields (handled by Pydantic)
+    # 3. Check code uniqueness (excluding current customer) - only if code is being updated
+    if payload.code and payload.code != customer.code:
+        code_exists = db.query(Customer).filter(
+            Customer.tenant_id == tenant_id,
+            Customer.id != id,
+            Customer.code == payload.code
+        ).first()
+        
+        if code_exists:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "Customer code already exists"}
+            )
     
-    # 4. Check code uniqueness (excluding current customer)
-    code_exists = db.query(Customer).filter(
-        Customer.tenant_id == tenant_id,
-        Customer.id != id,
-        Customer.code == payload.code
-    ).first()
+    # 4. Check email uniqueness (excluding current customer) - only if email is being updated
+    if payload.email and payload.email != customer.email:
+        email_exists = db.query(Customer).filter(
+            Customer.tenant_id == tenant_id,
+            Customer.id != id,
+            Customer.email == payload.email
+        ).first()
+        
+        if email_exists:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"email": "Customer email already exists"}
+            )
     
-    if code_exists:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "Customer code already exists"}
-        )
+    # 5. Verify client type if being updated (use typeId instead of type)
+    if payload.typeId:
+        client_type = db.query(ClientType).filter(
+            ClientType.id == payload.typeId,  # Changed from payload.type
+            ClientType.tenant_id == tenant_id
+        ).first()
+        
+        if not client_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"typeId": "Invalid client type"}
+            )
+    else:
+        # Keep existing client type for response
+        client_type = db.query(ClientType).filter(
+            ClientType.id == customer.client_type_id
+        ).first()
     
-    # 5. Check email uniqueness (excluding current customer)
-    email_exists = db.query(Customer).filter(
-        Customer.tenant_id == tenant_id,
-        Customer.id != id,
-        Customer.email == payload.email
-    ).first()
+    # 6. Verify account manager if being updated (use accountManagerId instead of accountManager)
+    if payload.accountManagerId:
+        account_manager = db.query(AccountManager).filter(
+            AccountManager.id == payload.accountManagerId,  # Changed from payload.accountManager
+            AccountManager.tenant_id == tenant_id
+        ).first()
+        
+        if not account_manager:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"accountManagerId": "Invalid account manager"}
+            )
+    else:
+        # Keep existing account manager for response
+        account_manager = db.query(AccountManager).filter(
+            AccountManager.id == customer.account_manager_id
+        ).first()
     
-    if email_exists:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"email": "Customer email already exists"}
-        )
-    
-    # 6. Verify foreign key references
-    client_type = db.query(ClientType).filter(
-        ClientType.id == payload.type,
-        ClientType.tenant_id == tenant_id
-    ).first()
-    
-    if not client_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"type": "Invalid client type"}
-        )
-    
-    account_manager = db.query(AccountManager).filter(
-        AccountManager.id == payload.accountManager,
-        AccountManager.tenant_id == tenant_id
-    ).first()
-    
-    if not account_manager:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"accountManager": "Invalid account manager"}
-        )
-    
-    # 7. Validate GST and PAN formats (handled by Pydantic validators)
-    
-    # 8. Update customer record
-    customer.code = payload.code
-    customer.name = payload.name
-    customer.client_type_id = payload.type
-    customer.address = payload.address
-    customer.email = payload.email
-    customer.whatsapp = payload.whatsapp
-    customer.phone = payload.phone
-    customer.contact_person = payload.contactPerson
-    customer.gst_number = payload.gstNumber
-    customer.pan_number = payload.panNumber
-    customer.payment_terms = payload.paymentTerms
-    customer.account_manager_id = payload.accountManager
+    # 7. Update customer record - only update fields that are provided
+    if payload.code is not None:
+        customer.code = payload.code
+    if payload.name is not None:
+        customer.name = payload.name
+    if payload.typeId is not None:
+        customer.client_type_id = payload.typeId  # Changed from payload.type
+    if payload.address is not None:
+        customer.address = payload.address
+    if payload.email is not None:
+        customer.email = payload.email
+    if payload.whatsapp is not None:
+        customer.whatsapp = payload.whatsapp
+    if payload.phone is not None:
+        customer.phone = payload.phone
+    if payload.contactPerson is not None:
+        customer.contact_person = payload.contactPerson
+    if payload.gstNumber is not None:
+        customer.gst_number = payload.gstNumber
+    if payload.panNumber is not None:
+        customer.pan_number = payload.panNumber
+    if payload.paymentTerms is not None:
+        customer.payment_terms = payload.paymentTerms
+    if payload.accountManagerId is not None:
+        customer.account_manager_id = payload.accountManagerId  # Changed from payload.accountManager
     if payload.isActive is not None:
         customer.is_active = payload.isActive
     
-    # 9. Set updated_at = NOW()
+    # 8. Set updated_at = NOW()
     customer.updated_at = datetime.utcnow()
     
     db.commit()
@@ -365,7 +387,7 @@ def update_customer(
     # TODO: Create audit log entry with old and new values
     # TODO: May update related invoice customer names (denormalization)
     
-    # 10. Return updated customer with joined data
+    # 9. Return updated customer with joined data
     return _to_response(customer, client_type.name, account_manager.name)
 
 
