@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:5173",
         "https://wonderful-kleicha-4e0920.netlify.app",
+        "https://gleeful-flan-7a72a9.netlify.app",
     ]
 
     # File uploads
