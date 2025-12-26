@@ -5,7 +5,7 @@ from app.models.base import Base, TimestampMixin, TenantMixin
 from app.models.tenant import Tenant, Subscription
 from app.models.user import User, Session, EmailVerification
 from app.models.company import Company
-from app.models.customer import Customer, ClientType, AccountManager
+from app.models.customer import Customer, ClientType  # AccountManager removed
 from app.models.service import ServiceType
 from app.models.invoice import Invoice, InvoiceLineItem
 from app.models.receipt import Receipt, ReceiptAllocation
@@ -25,7 +25,7 @@ __all__ = [
     "Company",
     "Customer",
     "ClientType",
-    "AccountManager",
+    # "AccountManager",  # Removed
     "ServiceType",
     "Invoice",
     "InvoiceLineItem",

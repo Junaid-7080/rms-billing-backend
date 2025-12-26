@@ -7,31 +7,48 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.models.customer import Customer, ClientType, AccountManager
+from app.models.customer import Customer, ClientType
 from app.models.invoice import Invoice
+from app.models.company import Company
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
 
 router = APIRouter(prefix="/api/v1/customers", tags=["Customers"])
 
 
-def _to_response(customer: Customer, client_type_name: str = "", account_manager_name: str = "") -> CustomerResponse:
+def _is_gst_applicable(company: Optional[Company]) -> bool:
+    """Determine if GST fields should be captured for customers."""
+    if not company:
+        return True
+    if not company.gst_applicable:
+        return False
+    if company.gst_compounding_company:
+        return False
+    return True
+
+
+def _to_response(customer: Customer, client_type_name: str = "") -> CustomerResponse:
     """Convert Customer model to response schema"""
     return CustomerResponse(
         id=str(customer.id),
         code=customer.code,
         name=customer.name,
-        type=client_type_name,
-        typeId=str(customer.client_type_id) if customer.client_type_id else "",
-        address=customer.address or "",
+        type=client_type_name or "",
+        typeId=str(customer.client_type_id) if customer.client_type_id else None,
+        addressLine1=customer.address_line1 or "",
+        addressLine2=customer.address_line2 or "",
+        addressLine3=customer.address_line3 or "",
+        state=customer.state or "",
+        country=customer.country or "",
         email=customer.email or "",
         whatsapp=customer.whatsapp or "",
         phone=customer.phone or "",
         contactPerson=customer.contact_person or "",
+        customerNote=customer.customer_note or "",
         gstNumber=customer.gst_number,
         panNumber=customer.pan_number,
+        gstExempted=customer.gst_exempted,
+        gstExemptionReason=customer.gst_exemption_reason,
         paymentTerms=customer.payment_terms,
-        accountManager=account_manager_name,
-        accountManagerId=str(customer.account_manager_id) if customer.account_manager_id else "",
         isActive=customer.is_active,
         createdAt=customer.created_at.isoformat() if customer.created_at else "",
         updatedAt=customer.updated_at.isoformat() if customer.updated_at else ""
@@ -57,12 +74,9 @@ def list_customers(
     # 2. Build query with filters - always filter by tenant_id
     query = db.query(
         Customer,
-        ClientType.name.label('client_type_name'),
-        AccountManager.name.label('account_manager_name')
+        ClientType.name.label('client_type_name')
     ).outerjoin(
         ClientType, Customer.client_type_id == ClientType.id
-    ).outerjoin(
-        AccountManager, Customer.account_manager_id == AccountManager.id
     ).filter(
         Customer.tenant_id == tenant_id
     )
@@ -106,8 +120,8 @@ def list_customers(
     
     # Convert to response
     data = [
-        _to_response(customer, client_type_name or "", account_manager_name or "")
-        for customer, client_type_name, account_manager_name in results
+        _to_response(customer, client_type_name or "")
+        for customer, client_type_name in results
     ]
     
     # 9. Return data and pagination metadata
@@ -137,12 +151,9 @@ def get_customer(
     # 3. JOIN with client_types and account_managers
     result = db.query(
         Customer,
-        ClientType.name.label('client_type_name'),
-        AccountManager.name.label('account_manager_name')
+        ClientType.name.label('client_type_name')
     ).outerjoin(
         ClientType, Customer.client_type_id == ClientType.id
-    ).outerjoin(
-        AccountManager, Customer.account_manager_id == AccountManager.id
     ).filter(
         Customer.id == id,
         Customer.tenant_id == tenant_id
@@ -155,10 +166,10 @@ def get_customer(
             detail="Customer not found"
         )
     
-    customer, client_type_name, account_manager_name = result
+    customer, client_type_name = result
     
     # 5. Return customer
-    return _to_response(customer, client_type_name or "", account_manager_name or "")
+    return _to_response(customer, client_type_name or "")
 
 
 @router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
@@ -197,29 +208,32 @@ def create_customer(
             detail={"email": "Customer email already exists"}
         )
     
-    # 5. Verify client_type_id exists and belongs to tenant
-    client_type = db.query(ClientType).filter(
-        ClientType.id == payload.type,
-        ClientType.tenant_id == tenant_id
-    ).first()
+    # 5. Verify client_type_id exists and belongs to tenant (optional)
+    client_type = None
+    if payload.typeId:
+        client_type = db.query(ClientType).filter(
+            ClientType.id == payload.typeId,
+            ClientType.tenant_id == tenant_id
+        ).first()
+        if not client_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"typeId": "Invalid client type"}
+            )
     
-    if not client_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"type": "Invalid client type"}
-        )
+    # 6. Determine GST applicability and enforce rules
+    company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
+    gst_allowed = _is_gst_applicable(company)
+    if not gst_allowed:
+        if any([payload.gstNumber, payload.gstExempted, payload.gstExemptionReason]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GST fields are not applicable for this company"
+            )
     
-    # 6. Verify account_manager_id exists and belongs to tenant
-    account_manager = db.query(AccountManager).filter(
-        AccountManager.id == payload.accountManager,
-        AccountManager.tenant_id == tenant_id
-    ).first()
-    
-    if not account_manager:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"accountManager": "Invalid account manager"}
-        )
+    gst_number = payload.gstNumber if gst_allowed else None
+    gst_exempted = payload.gstExempted if gst_allowed else False
+    gst_exemption_reason = payload.gstExemptionReason if gst_allowed else None
     
     # 7-8. Validate GST and PAN formats (handled by Pydantic validators)
     
@@ -233,16 +247,22 @@ def create_customer(
         tenant_id=tenant_id,
         code=payload.code,
         name=payload.name,
-        client_type_id=payload.type,
-        address=payload.address,
+        client_type_id=payload.typeId,
+        address_line1=payload.addressLine1,
+        address_line2=payload.addressLine2,
+        address_line3=payload.addressLine3,
+        state=payload.state,
+        country=payload.country,
         email=payload.email,
         whatsapp=payload.whatsapp,
         phone=payload.phone,
         contact_person=payload.contactPerson,
-        gst_number=payload.gstNumber,
+        customer_note=payload.customerNote,
+        gst_number=gst_number,
         pan_number=payload.panNumber,
+        gst_exempted=gst_exempted,
+        gst_exemption_reason=gst_exemption_reason,
         payment_terms=payload.paymentTerms,
-        account_manager_id=payload.accountManager,
         is_active=payload.isActive if payload.isActive is not None else True,
         created_by=current_user.id,
         created_at=datetime.utcnow(),
@@ -261,7 +281,8 @@ def create_customer(
     # TODO: Check subscription limits (free tier: max 50 customers)
     
     # 13. Return created customer with joined data
-    return _to_response(customer, client_type.name, account_manager.name)
+    client_type_name = client_type.name if client_type else ""
+    return _to_response(customer, client_type_name)
 
 @router.put("/{id}", response_model=CustomerResponse)
 def update_customer(
@@ -317,7 +338,7 @@ def update_customer(
     # 5. Verify client type if being updated (use typeId instead of type)
     if payload.typeId:
         client_type = db.query(ClientType).filter(
-            ClientType.id == payload.typeId,  # Changed from payload.type
+            ClientType.id == payload.typeId,
             ClientType.tenant_id == tenant_id
         ).first()
         
@@ -332,23 +353,19 @@ def update_customer(
             ClientType.id == customer.client_type_id
         ).first()
     
-    # 6. Verify account manager if being updated (use accountManagerId instead of accountManager)
-    if payload.accountManagerId:
-        account_manager = db.query(AccountManager).filter(
-            AccountManager.id == payload.accountManagerId,  # Changed from payload.accountManager
-            AccountManager.tenant_id == tenant_id
-        ).first()
-        
-        if not account_manager:
+    # 6. Determine GST applicability
+    company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
+    gst_allowed = _is_gst_applicable(company)
+    if not gst_allowed:
+        if any([
+            payload.gstNumber,
+            payload.gstExempted,
+            payload.gstExemptionReason
+        ]):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"accountManagerId": "Invalid account manager"}
+                detail="GST fields are not applicable for this company"
             )
-    else:
-        # Keep existing account manager for response
-        account_manager = db.query(AccountManager).filter(
-            AccountManager.id == customer.account_manager_id
-        ).first()
     
     # 7. Update customer record - only update fields that are provided
     if payload.code is not None:
@@ -356,9 +373,17 @@ def update_customer(
     if payload.name is not None:
         customer.name = payload.name
     if payload.typeId is not None:
-        customer.client_type_id = payload.typeId  # Changed from payload.type
-    if payload.address is not None:
-        customer.address = payload.address
+        customer.client_type_id = payload.typeId
+    if payload.addressLine1 is not None:
+        customer.address_line1 = payload.addressLine1
+    if payload.addressLine2 is not None:
+        customer.address_line2 = payload.addressLine2
+    if payload.addressLine3 is not None:
+        customer.address_line3 = payload.addressLine3
+    if payload.state is not None:
+        customer.state = payload.state
+    if payload.country is not None:
+        customer.country = payload.country
     if payload.email is not None:
         customer.email = payload.email
     if payload.whatsapp is not None:
@@ -367,16 +392,27 @@ def update_customer(
         customer.phone = payload.phone
     if payload.contactPerson is not None:
         customer.contact_person = payload.contactPerson
-    if payload.gstNumber is not None:
+    if payload.customerNote is not None:
+        customer.customer_note = payload.customerNote
+    if payload.gstNumber is not None and gst_allowed:
         customer.gst_number = payload.gstNumber
     if payload.panNumber is not None:
         customer.pan_number = payload.panNumber
+    if payload.gstExempted is not None and gst_allowed:
+        customer.gst_exempted = payload.gstExempted
+        if not customer.gst_exempted:
+            customer.gst_exemption_reason = None
+    if payload.gstExemptionReason is not None and gst_allowed:
+        customer.gst_exemption_reason = payload.gstExemptionReason
     if payload.paymentTerms is not None:
         customer.payment_terms = payload.paymentTerms
-    if payload.accountManagerId is not None:
-        customer.account_manager_id = payload.accountManagerId  # Changed from payload.accountManager
     if payload.isActive is not None:
         customer.is_active = payload.isActive
+    
+    if not gst_allowed:
+        customer.gst_number = None
+        customer.gst_exempted = False
+        customer.gst_exemption_reason = None
     
     # 8. Set updated_at = NOW()
     customer.updated_at = datetime.utcnow()

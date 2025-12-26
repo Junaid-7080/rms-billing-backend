@@ -47,7 +47,6 @@ class AccountManager(Base, TimestampMixin, TenantMixin):
 
     # Relationships
     tenant = relationship("Tenant")
-    customers = relationship("Customer", back_populates="account_manager")
 
     def __repr__(self):
         return f"<AccountManager {self.name}>"
@@ -70,23 +69,25 @@ class Customer(Base, TimestampMixin, TenantMixin):
     )
 
     # Contact information
-    address = Column(Text, nullable=True)
+    address_line1 = Column(String(255), nullable=True)
+    address_line2 = Column(String(255), nullable=True)
+    address_line3 = Column(String(255), nullable=True)
+    state = Column(String(100), nullable=True)
+    country = Column(String(100), nullable=True)
     email = Column(String(255), nullable=True)
     whatsapp = Column(String(20), nullable=True)
     phone = Column(String(20), nullable=True)
     contact_person = Column(String(255), nullable=True)
+    customer_note = Column(Text, nullable=True)
 
     # Tax information
     gst_number = Column(String(15), nullable=True)
     pan_number = Column(String(10), nullable=True)
+    gst_exempted = Column(Boolean, default=False, nullable=False)
+    gst_exemption_reason = Column(Text, nullable=True)
 
     # Business terms
     payment_terms = Column(Integer, default=30, nullable=False)
-
-    # Account manager reference
-    account_manager_id = Column(
-        UUID(as_uuid=True), ForeignKey("account_managers.id"), nullable=True
-    )
 
     # Status
     is_active = Column(Boolean, default=True, nullable=False)
@@ -97,7 +98,6 @@ class Customer(Base, TimestampMixin, TenantMixin):
     # Relationships
     tenant = relationship("Tenant", back_populates="customers")
     client_type = relationship("ClientType", back_populates="customers")
-    account_manager = relationship("AccountManager", back_populates="customers")
     invoices = relationship("Invoice", back_populates="customer")
     receipts = relationship("Receipt", back_populates="customer")
     credit_notes = relationship("CreditNote", back_populates="customer")
