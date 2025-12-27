@@ -7,7 +7,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.models.customer import Customer, ClientType
+from app.models.customer import Customer
 from app.models.invoice import Invoice
 from app.models.company import Company
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
@@ -26,14 +26,12 @@ def _is_gst_applicable(company: Optional[Company]) -> bool:
     return True
 
 
-def _to_response(customer: Customer, client_type_name: str = "") -> CustomerResponse:
+def _to_response(customer: Customer) -> CustomerResponse:
     """Convert Customer model to response schema"""
     return CustomerResponse(
         id=str(customer.id),
         code=customer.code,
         name=customer.name,
-        type=client_type_name or "",
-        typeId=str(customer.client_type_id) if customer.client_type_id else None,
         addressLine1=customer.address_line1 or "",
         addressLine2=customer.address_line2 or "",
         addressLine3=customer.address_line3 or "",
@@ -74,9 +72,6 @@ def list_customers(
     # 2. Build query with filters - always filter by tenant_id
     query = db.query(
         Customer,
-        ClientType.name.label('client_type_name')
-    ).outerjoin(
-        ClientType, Customer.client_type_id == ClientType.id
     ).filter(
         Customer.tenant_id == tenant_id
     )
@@ -91,10 +86,6 @@ def list_customers(
                 Customer.email.ilike(search_pattern)
             )
         )
-    
-    # Apply type filter
-    if type:
-        query = query.filter(Customer.client_type_id == type)
     
     # Apply isActive filter
     if isActive is not None:
@@ -120,8 +111,8 @@ def list_customers(
     
     # Convert to response
     data = [
-        _to_response(customer, client_type_name or "")
-        for customer, client_type_name in results
+        _to_response(customer)
+        for customer in results
     ]
     
     # 9. Return data and pagination metadata
@@ -151,9 +142,6 @@ def get_customer(
     # 3. JOIN with client_types and account_managers
     result = db.query(
         Customer,
-        ClientType.name.label('client_type_name')
-    ).outerjoin(
-        ClientType, Customer.client_type_id == ClientType.id
     ).filter(
         Customer.id == id,
         Customer.tenant_id == tenant_id
@@ -166,10 +154,10 @@ def get_customer(
             detail="Customer not found"
         )
     
-    customer, client_type_name = result
+    customer = result[0] if isinstance(result, tuple) else result
     
     # 5. Return customer
-    return _to_response(customer, client_type_name or "")
+    return _to_response(customer)
 
 
 @router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
@@ -208,20 +196,7 @@ def create_customer(
             detail={"email": "Customer email already exists"}
         )
     
-    # 5. Verify client_type_id exists and belongs to tenant (optional)
-    client_type = None
-    if payload.typeId:
-        client_type = db.query(ClientType).filter(
-            ClientType.id == payload.typeId,
-            ClientType.tenant_id == tenant_id
-        ).first()
-        if not client_type:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"typeId": "Invalid client type"}
-            )
-    
-    # 6. Determine GST applicability and enforce rules
+    # 5. Determine GST applicability and enforce rules
     company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
     gst_allowed = _is_gst_applicable(company)
     if not gst_allowed:
@@ -247,7 +222,7 @@ def create_customer(
         tenant_id=tenant_id,
         code=payload.code,
         name=payload.name,
-        client_type_id=payload.typeId,
+        client_type_id=None,
         address_line1=payload.addressLine1,
         address_line2=payload.addressLine2,
         address_line3=payload.addressLine3,
@@ -281,8 +256,7 @@ def create_customer(
     # TODO: Check subscription limits (free tier: max 50 customers)
     
     # 13. Return created customer with joined data
-    client_type_name = client_type.name if client_type else ""
-    return _to_response(customer, client_type_name)
+    return _to_response(customer)
 
 @router.put("/{id}", response_model=CustomerResponse)
 def update_customer(
@@ -335,25 +309,7 @@ def update_customer(
                 detail={"email": "Customer email already exists"}
             )
     
-    # 5. Verify client type if being updated (use typeId instead of type)
-    if payload.typeId:
-        client_type = db.query(ClientType).filter(
-            ClientType.id == payload.typeId,
-            ClientType.tenant_id == tenant_id
-        ).first()
-        
-        if not client_type:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"typeId": "Invalid client type"}
-            )
-    else:
-        # Keep existing client type for response
-        client_type = db.query(ClientType).filter(
-            ClientType.id == customer.client_type_id
-        ).first()
-    
-    # 6. Determine GST applicability
+    # 5. Determine GST applicability
     company = db.query(Company).filter(Company.tenant_id == tenant_id).first()
     gst_allowed = _is_gst_applicable(company)
     if not gst_allowed:
@@ -372,8 +328,6 @@ def update_customer(
         customer.code = payload.code
     if payload.name is not None:
         customer.name = payload.name
-    if payload.typeId is not None:
-        customer.client_type_id = payload.typeId
     if payload.addressLine1 is not None:
         customer.address_line1 = payload.addressLine1
     if payload.addressLine2 is not None:
@@ -424,7 +378,7 @@ def update_customer(
     # TODO: May update related invoice customer names (denormalization)
     
     # 9. Return updated customer with joined data
-    return _to_response(customer, client_type.name, account_manager.name)
+    return _to_response(customer)
 
 
 @router.delete("/{id}")

@@ -14,7 +14,6 @@ def _strip_or_none(value: Optional[str]) -> Optional[str]:
 class CustomerCreate(BaseModel):
     code: str = Field(..., min_length=2)
     name: str = Field(..., min_length=2)
-    typeId: Optional[UUID] = None  # UUID of client type (optional)
     addressLine1: str = Field(..., min_length=2)
     addressLine2: Optional[str] = Field(None, min_length=2)
     addressLine3: Optional[str] = Field(None, min_length=2)
@@ -71,10 +70,9 @@ class CustomerCreate(BaseModel):
         return cleaned
 
 
-class CustomerUpdate(CustomerCreate):
+class CustomerUpdate(BaseModel):
     code: Optional[str] = Field(None, min_length=2)
     name: Optional[str] = Field(None, min_length=2)
-    typeId: Optional[UUID] = None
     addressLine1: Optional[str] = Field(None, min_length=2)
     addressLine2: Optional[str] = Field(None, min_length=2)
     addressLine3: Optional[str] = Field(None, min_length=2)
@@ -137,8 +135,6 @@ class CustomerResponse(BaseModel):
     id: str
     code: str
     name: str
-    type: Optional[str] = None  # Display name
-    typeId: Optional[str] = None  # UUID
     addressLine1: Optional[str] = None
     addressLine2: Optional[str] = None
     addressLine3: Optional[str] = None
