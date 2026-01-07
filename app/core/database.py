@@ -25,5 +25,5 @@ def test_connection() -> bool:
         return False
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created")
+    # ❌ Production-il tables auto-create cheyyaruthu
+    pass

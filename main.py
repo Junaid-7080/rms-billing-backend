@@ -58,12 +58,7 @@ async def startup_event():
         logger.info("≡ƒöì Testing database connection...")
         if test_connection():
             logger.info("Γ£à Database connection successful")
-            try:
-                init_db()
-                logger.info("Γ£à Database initialized successfully")
-            except Exception as e:
-                logger.error(f"ΓÜá∩╕Å Database initialization failed: {str(e)}")
-                logger.warning("ΓÜá∩╕Å App will continue but database operations may fail")
+            logger.warning("ΓÜá∩╕Å App will continue but database operations may fail")
         else:
             logger.error("Γ¥î Database connection failed")
             logger.warning("=" * 60)
