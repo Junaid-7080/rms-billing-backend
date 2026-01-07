@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "https://wonderful-kleicha-4e0920.netlify.app",
         "https://gleeful-flan-7a72a9.netlify.app",
-        "https://visionary-wisp-674df6.netlify.app"
+        "https://visionary-wisp-674df6.netlify.app",
         "https://fluffy-medovik-b9812e.netlify.app"
     ]
 
