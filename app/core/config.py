@@ -46,7 +46,8 @@ class Settings(BaseSettings):
         "https://wonderful-kleicha-4e0920.netlify.app",
         "https://gleeful-flan-7a72a9.netlify.app",
         "https://visionary-wisp-674df6.netlify.app",
-        "https://fluffy-medovik-b9812e.netlify.app"
+        "https://fluffy-medovik-b9812e.netlify.app",
+        "https://dazzling-figolla-8767fb.netlify.app"
     ]
 
     # File uploads
