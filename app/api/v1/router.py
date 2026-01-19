@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     service_types,
     client_types,
     account_managers,
+    roles,
     invoices,
     receipts,
     credit_notes,
@@ -29,6 +30,7 @@ api_router.include_router(customers.router)
 api_router.include_router(service_types.router)
 api_router.include_router(client_types.router)
 api_router.include_router(account_managers.router, prefix="/account-managers", tags=["Account Managers"])
+api_router.include_router(roles.router)
 api_router.include_router(invoices.router)
 api_router.include_router(receipts.router)
 api_router.include_router(credit_notes.router)

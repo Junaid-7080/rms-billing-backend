@@ -7,6 +7,7 @@ from alembic import context
 
 from app.core.config import settings
 from app.core.database import Base
+import app.models # Ensure all models are imported
 
 
 # this is the Alembic Config object, which provides

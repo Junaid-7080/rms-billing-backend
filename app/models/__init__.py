@@ -4,6 +4,8 @@ SQLAlchemy models for the application
 from app.models.base import Base, TimestampMixin, TenantMixin
 from app.models.tenant import Tenant, Subscription
 from app.models.user import User, Session, EmailVerification
+from app.models.role import Role
+
 from app.models.company import Company
 from app.models.customer import Customer, ClientType  # AccountManager removed
 from app.models.service import ServiceType
@@ -22,6 +24,7 @@ __all__ = [
     "User",
     "Session",
     "EmailVerification",
+    "Role",
     "Company",
     "Customer",
     "ClientType",

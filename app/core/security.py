@@ -21,14 +21,23 @@ security = HTTPBearer()
 # PASSWORD UTILITIES
 # -------------------------
 def hash_password(password: str) -> str:
-    """Hash a plain password"""
-    return pwd_context.hash(password)
+    """Hash a plain password using bcrypt"""
+    import bcrypt
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password_bytes, salt).decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
-
+    try:
+        # Use bcrypt directly for better compatibility
+        import bcrypt
+        password_bytes = plain_password.encode('utf-8')
+        hashed_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except Exception as e:
+        print(f"Password verification error: {e}")
+        return False
 
 # -------------------------
 # TOKEN CREATION
@@ -217,6 +226,23 @@ def get_current_active_user(
             detail="Inactive user"
         )
     return current_user
+
+
+def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Ensure the authenticated user is an admin"""
+    # Check legacy role string
+    if getattr(current_user, "role", None) == "admin":
+        return current_user
+        
+    # Check linked role relationship
+    linked_role = getattr(current_user, "user_role", None)
+    if linked_role and getattr(linked_role, "name", None) == "admin":
+        return current_user
+        
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required"
+    )
 
 
 # -------------------------

@@ -3,6 +3,7 @@ Authentication Pydantic schemas
 Request and response models for authentication endpoints
 """
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, validator
 import re
 
@@ -13,7 +14,7 @@ class RegisterRequest(BaseModel):
     firstName: str = Field(..., min_length=2)
     lastName: Optional[str] = Field(None, min_length=2)
     companyName: str = Field(..., min_length=2)
-    companySlug: str = Field(..., min_length=2)
+    roleId: Optional[UUID] = None  # Optional: copy role from existing role
     
     @validator('password')
     def validate_password(cls, v):
@@ -25,19 +26,15 @@ class RegisterRequest(BaseModel):
             raise ValueError('Password must contain at least one number')
         return v
     
-    @validator('companySlug')
-    def validate_slug(cls, v):
-        if not re.match(r'^[a-z0-9-]+$', v):
-            raise ValueError('Company slug must be lowercase alphanumeric with hyphens only')
-        return v
-
-
 class UserResponse(BaseModel):
     id: str
     email: str
     firstName: str
     lastName: Optional[str]
-    role: str
+    role: Optional[str]
+    roleId: Optional[str]
+    roleName: Optional[str]
+    isActive: bool
     emailVerified: bool
 
 

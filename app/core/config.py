@@ -5,6 +5,10 @@ Loads settings from environment variables
 from pydantic_settings import BaseSettings
 from typing import Optional, List, Union
 from pydantic import field_validator
+from dotenv import load_dotenv  # ⬅️ Add this
+
+# Load .env file explicitly
+load_dotenv()  # ⬅️ Add this
 
 
 class Settings(BaseSettings):

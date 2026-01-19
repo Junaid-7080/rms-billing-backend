@@ -20,6 +20,7 @@ from app.core.security import (
 )
 from app.models.user import User, Session as UserSession, EmailVerification
 from app.models.tenant import Tenant, Subscription
+from app.models.role import Role
 from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
@@ -53,13 +54,16 @@ async def register(
             detail="Email already registered"
         )
     
+    # Generate slug from company name
+    import re
+    company_slug = re.sub(r'[^a-z0-9]+', '-', request.companyName.lower()).strip('-')
+    
     # Check if company slug already exists
-    existing_tenant = db.query(Tenant).filter(Tenant.slug == request.companySlug).first()
+    existing_tenant = db.query(Tenant).filter(Tenant.slug == company_slug).first()
     if existing_tenant:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Company slug already taken"
-        )
+        # Add a random suffix to make it unique
+        import random
+        company_slug = f"{company_slug}-{random.randint(1000, 9999)}"
     
     try:
         # Create tenant
@@ -70,7 +74,7 @@ async def register(
         tenant = Tenant(
             id=tenant_id,
             name=request.companyName,
-            slug=request.companySlug,
+            slug=company_slug,
             email=request.email,
             subscription_status="trial",
             trial_start_date=trial_start,
@@ -79,8 +83,55 @@ async def register(
         )
         db.add(tenant)
         
-        # Check if this is the first user for this tenant
-        is_first_user = not db.query(User).filter(User.tenant_id == tenant_id).first()
+        # Create default roles for the tenant
+        admin_role_id = uuid.uuid4()
+        admin_role = Role(
+            id=admin_role_id,
+            tenant_id=tenant_id,
+            name="admin",
+            description="Super admin role with all permissions",
+            permissions={},
+            is_system=True,
+            is_active=True
+        )
+        db.add(admin_role)
+
+        user_role_obj = Role(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            name="user",
+            description="Regular user role with limited access",
+            permissions={},
+            is_system=True,
+            is_active=True
+        )
+        db.add(user_role_obj)
+
+        # Determine which role to assign
+        # If roleId is provided, copy that role's details to create a new role for this tenant
+        assigned_role_id = admin_role_id
+        assigned_role_name = "admin"
+        
+        if hasattr(request, 'roleId') and request.roleId:
+            # Fetch the source role from any tenant
+            source_role = db.query(Role).filter(Role.id == request.roleId).first()
+            
+            if source_role:
+                # Create a copy of this role for the new tenant
+                custom_role_id = uuid.uuid4()
+                custom_role = Role(
+                    id=custom_role_id,
+                    tenant_id=tenant_id,
+                    name=source_role.name,
+                    description=source_role.description or f"{source_role.name} role",
+                    permissions=source_role.permissions or {},
+                    is_system=False,
+                    is_active=True
+                )
+                db.add(custom_role)
+                
+                assigned_role_id = custom_role_id
+                assigned_role_name = source_role.name
         
         # Create user
         user_id = uuid.uuid4()
@@ -91,7 +142,8 @@ async def register(
             password_hash=hash_password(request.password),
             first_name=request.firstName,
             last_name=request.lastName,
-            role="admin" if is_first_user else "user",
+            role=assigned_role_name,
+            role_id=assigned_role_id,
             email_verified=False,
             is_active=True,
         )
@@ -137,6 +189,9 @@ async def register(
                 "firstName": user.first_name,
                 "lastName": user.last_name,
                 "role": user.role,
+                "roleId": str(user.role_id) if user.role_id else None,
+                "roleName": user.user_role.name if user.user_role else None,
+                "isActive": user.is_active,
                 "emailVerified": user.email_verified,
             },
             tenant={
@@ -170,14 +225,20 @@ async def login(
     """
     # Find user
     user = db.query(User).filter(
-        User.email == request_data.email,
-        User.is_active == True
+        User.email == request_data.email
     ).first()
     
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
+        )
+    
+    # Check if user is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive. Please contact your administrator."
         )
     
     # Verify password
@@ -243,6 +304,9 @@ async def login(
             "firstName": user.first_name,
             "lastName": user.last_name,
             "role": user.role,
+            "roleId": str(user.role_id) if user.role_id else None,
+            "roleName": user.user_role.name if user.user_role else None,
+            "isActive": user.is_active,
             "emailVerified": user.email_verified,
         },
         tenant={

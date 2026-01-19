@@ -27,6 +27,14 @@ class User(Base, TimestampMixin, TenantMixin):
 
     # Role within tenant (admin, manager, user)
     role = Column(String(50), nullable=False, default="user")
+    
+    # Linked role from roles table
+    role_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("roles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Email verification
     email_verified = Column(Boolean, default=False, nullable=False)
@@ -41,6 +49,7 @@ class User(Base, TimestampMixin, TenantMixin):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
+    user_role = relationship("Role")  # Changed backref name to avoid conflict with 'role' string
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     email_verifications = relationship(
         "EmailVerification", back_populates="user", cascade="all, delete-orphan"

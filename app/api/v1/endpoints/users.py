@@ -1,5 +1,5 @@
 from uuid import UUID, uuid4
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -21,12 +21,19 @@ router = APIRouter(prefix="/auth/users", tags=["Users"])
 async def get_current_manager_or_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    if current_user.role not in ("admin", "manager"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manager or Admin access required",
-        )
-    return current_user
+    # Check legacy role string
+    if current_user.role in ("admin", "manager"):
+        return current_user
+        
+    # Check linked role relationship
+    linked_role = getattr(current_user, "user_role", None)
+    if linked_role and getattr(linked_role, "name", None) in ("admin", "manager"):
+        return current_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Manager or Admin access required",
+    )
 
 
 def _to_user_response(user: User) -> UserResponse:
@@ -36,6 +43,8 @@ def _to_user_response(user: User) -> UserResponse:
         firstName=user.first_name or "",
         lastName=user.last_name,
         role=user.role,
+        roleId=str(user.role_id) if user.role_id else None,
+        roleName=user.user_role.name if user.user_role else None,
         isActive=user.is_active,
         emailVerified=user.email_verified,
         lastLoginAt=user.last_login_at.isoformat() if user.last_login_at else None,
@@ -45,20 +54,21 @@ def _to_user_response(user: User) -> UserResponse:
 
 @router.get("", response_model=UserListResponse)
 async def list_users(
+    isActive: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_manager_or_admin),
 ):
     tenant_id = current_user.tenant_id
 
-    users: List[User] = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant_id,
-            User.deleted_at.is_(None),
-        )
-        .order_by(User.created_at.asc())
-        .all()
+    query = db.query(User).filter(
+        User.tenant_id == tenant_id,
+        User.deleted_at.is_(None),
     )
+
+    if isActive is not None:
+        query = query.filter(User.is_active == isActive)
+
+    users = query.order_by(User.created_at.asc()).all()
 
     return UserListResponse(data=[_to_user_response(u) for u in users])
 
@@ -122,6 +132,7 @@ async def create_user(
         first_name=payload.firstName,
         last_name=payload.lastName,
         role=payload.role,
+        role_id=payload.roleId,
         is_active=payload.isActive,
         email_verified=False,
     )
@@ -163,6 +174,8 @@ async def update_user(
         user.last_name = payload.lastName
     if payload.role is not None:
         user.role = payload.role
+    if payload.roleId is not None:
+        user.role_id = payload.roleId
     if payload.isActive is not None:
         user.is_active = payload.isActive
 
